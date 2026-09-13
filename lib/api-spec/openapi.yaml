@@ -3,13 +3,21 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Small group personal training booking and workout tracking API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: dashboard
+    description: Dashboard summaries
+  - name: sessions
+    description: Group training sessions and bookings
+  - name: workouts
+    description: Programmed workouts and completion logs
+  - name: members
+    description: Coach-facing member roster
 paths:
   /healthz:
     get:
@@ -24,6 +32,175 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /dashboard:
+    get:
+      operationId: getDashboard
+      tags: [dashboard]
+      summary: Get the current training dashboard
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+  /sessions:
+    get:
+      operationId: listSessions
+      tags: [sessions]
+      summary: List upcoming group sessions
+      parameters:
+        - in: query
+          name: range
+          schema:
+            type: string
+            enum: [week, month]
+            default: week
+          required: false
+      responses:
+        "200":
+          description: Upcoming sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TrainingSession"
+  /sessions/{sessionId}/booking:
+    post:
+      operationId: bookSession
+      tags: [sessions]
+      summary: Book a place in a training session
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingSession"
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Session is full
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: cancelSessionBooking
+      tags: [sessions]
+      summary: Cancel a booked training session
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingSession"
+        "404":
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /workouts:
+    get:
+      operationId: listWorkouts
+      tags: [workouts]
+      summary: List the member's programmed workouts
+      responses:
+        "200":
+          description: Workouts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Workout"
+  /workouts/{workoutId}:
+    get:
+      operationId: getWorkout
+      tags: [workouts]
+      summary: Get a workout with exercise details
+      parameters:
+        - in: path
+          name: workoutId
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Workout detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workout"
+        "404":
+          description: Workout not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /workouts/{workoutId}/complete:
+    post:
+      operationId: completeWorkout
+      tags: [workouts]
+      summary: Mark a workout complete and record its result
+      parameters:
+        - in: path
+          name: workoutId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkoutCompletionInput"
+      responses:
+        "201":
+          description: Workout log created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkoutLog"
+        "404":
+          description: Workout not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /members:
+    get:
+      operationId: listMembers
+      tags: [members]
+      summary: List members for the coach roster
+      responses:
+        "200":
+          description: Members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Member"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +210,240 @@ components:
           type: string
       required:
         - status
-
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+    TrainingSession:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        focus:
+          type: string
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        coachName:
+          type: string
+        location:
+          type: string
+        spotsTotal:
+          type: integer
+        spotsTaken:
+          type: integer
+        booked:
+          type: boolean
+        level:
+          type: string
+        tag:
+          type: string
+        accent:
+          type: string
+      required:
+        - id
+        - title
+        - focus
+        - startAt
+        - endAt
+        - coachName
+        - location
+        - spotsTotal
+        - spotsTaken
+        - booked
+        - level
+        - tag
+        - accent
+    Exercise:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        prescription:
+          type: string
+        note:
+          type: string
+        completed:
+          type: boolean
+      required:
+        - id
+        - name
+        - prescription
+        - note
+        - completed
+    Workout:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        subtitle:
+          type: string
+        category:
+          type: string
+        durationMinutes:
+          type: integer
+        difficulty:
+          type: string
+        scheduledFor:
+          type: string
+          format: date-time
+        completed:
+          type: boolean
+        exercises:
+          type: array
+          items:
+            $ref: "#/components/schemas/Exercise"
+      required:
+        - id
+        - title
+        - subtitle
+        - category
+        - durationMinutes
+        - difficulty
+        - scheduledFor
+        - completed
+        - exercises
+    WorkoutLog:
+      type: object
+      properties:
+        id:
+          type: string
+        workoutId:
+          type: string
+        title:
+          type: string
+        completedAt:
+          type: string
+          format: date-time
+        score:
+          type: integer
+        volume:
+          type: integer
+        notes:
+          type: string
+      required:
+        - id
+        - workoutId
+        - title
+        - completedAt
+        - score
+        - volume
+        - notes
+    ProgressMetric:
+      type: object
+      properties:
+        label:
+          type: string
+        value:
+          type: string
+        unit:
+          type: string
+        change:
+          type: string
+        trend:
+          type: string
+          enum: [up, down, flat]
+      required:
+        - label
+        - value
+        - unit
+        - change
+        - trend
+    Dashboard:
+      type: object
+      properties:
+        memberName:
+          type: string
+        weekLabel:
+          type: string
+        streak:
+          type: integer
+        sessionsBooked:
+          type: integer
+        workoutsCompleted:
+          type: integer
+        readinessScore:
+          type: integer
+        nextSession:
+          anyOf:
+            - $ref: "#/components/schemas/TrainingSession"
+            - type: "null"
+        upcoming:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrainingSession"
+        recentWorkouts:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkoutLog"
+        progress:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProgressMetric"
+      required:
+        - memberName
+        - weekLabel
+        - streak
+        - sessionsBooked
+        - workoutsCompleted
+        - readinessScore
+        - nextSession
+        - upcoming
+        - recentWorkouts
+        - progress
+    WorkoutCompletionInput:
+      type: object
+      properties:
+        score:
+          type: integer
+          minimum: 1
+          maximum: 10
+        volume:
+          type: integer
+          minimum: 0
+        notes:
+          type: string
+      required:
+        - score
+        - volume
+        - notes
+    Member:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        initials:
+          type: string
+        goal:
+          type: string
+        streak:
+          type: integer
+        lastActive:
+          type: string
+        attendance:
+          type: integer
+        avatarColor:
+          type: string
+      required:
+        - id
+        - name
+        - initials
+        - goal
+        - streak
+        - lastActive
+        - attendance
+        - avatarColor

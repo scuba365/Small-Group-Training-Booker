@@ -5,7 +5,8 @@
  * Small group personal training booking and workout tracking API
  * OpenAPI spec version: 0.1.0
  */
+import type { ListSessionsRange } from './listSessionsRange';
 
-export interface HealthStatus {
-  status: string;
-}
+export type ListSessionsParams = {
+range?: ListSessionsRange;
+};

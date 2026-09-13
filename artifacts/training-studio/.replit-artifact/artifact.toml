@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Training Studio"
+description = "A small-group personal training platform for coaches and members to book sessions, manage capacity, follow programmed workouts, and track progress."
+version = "1.0.0"
+id = "artifacts/training-studio"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21345
+
+[services.development]
+run = "pnpm --filter @workspace/training-studio run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/training-studio", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/training-studio/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21345"
+BASE_PATH = "/"

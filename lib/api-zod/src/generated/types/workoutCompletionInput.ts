@@ -6,6 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface HealthStatus {
-  status: string;
+export interface WorkoutCompletionInput {
+  /**
+     * @minimum 1
+     * @maximum 10
+     */
+  score: number;
+  /** @minimum 0 */
+  volume: number;
+  notes: string;
 }

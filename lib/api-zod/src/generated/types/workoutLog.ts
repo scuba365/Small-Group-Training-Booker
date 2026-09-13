@@ -6,6 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface HealthStatus {
-  status: string;
+export interface WorkoutLog {
+  id: string;
+  workoutId: string;
+  title: string;
+  completedAt: Date;
+  score: number;
+  volume: number;
+  notes: string;
 }
