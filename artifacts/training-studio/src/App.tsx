@@ -52,6 +52,8 @@ import { Link, Route, Router as WouterRouter, Switch, useLocation, useParams } f
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import ExerciseLibrary from '@/pages/exercise-library';
+import ProgrammeBuilder, { ProgrammeList } from '@/pages/programme-builder';
 
 const queryClient = new QueryClient();
 
@@ -147,6 +149,8 @@ function AppShell({ children }: { children: ReactNode }) {
     { href: '/', label: 'Overview', icon: Home },
     { href: '/schedule', label: 'Schedule', icon: CalendarDays },
     { href: '/workouts', label: 'Workouts', icon: Dumbbell },
+    { href: '/exercises', label: 'Exercises', icon: Dumbbell },
+    { href: '/programmes', label: 'Programmes', icon: BarChart3 },
     { href: '/members', label: 'Roster', icon: Users },
   ];
   const active = (href: string) => href === '/' ? location === '/' : location.startsWith(href);
@@ -338,7 +342,7 @@ function NotFoundPage() {
 
 function RoutedApp() {
   const [location] = useLocation();
-  return <ErrorBoundary resetKey={location}><AppShell><Switch><Route path="/" component={DashboardPage} /><Route path="/schedule" component={SchedulePage} /><Route path="/workouts" component={WorkoutsPage} /><Route path="/workouts/:workoutId" component={WorkoutDetailPage} /><Route path="/members" component={MembersPage} /><Route component={NotFoundPage} /></Switch></AppShell></ErrorBoundary>;
+  return <ErrorBoundary resetKey={location}><AppShell><Switch><Route path="/" component={DashboardPage} /><Route path="/schedule" component={SchedulePage} /><Route path="/workouts" component={WorkoutsPage} /><Route path="/workouts/:workoutId" component={WorkoutDetailPage} /><Route path="/members" component={MembersPage} /><Route path="/exercises" component={ExerciseLibrary} /><Route path="/programmes" component={ProgrammeList} /><Route path="/programmes/:id" component={ProgrammeBuilder} /><Route component={NotFoundPage} /></Switch></AppShell></ErrorBoundary>;
 }
 
 function App() {
