@@ -61,11 +61,18 @@ import WorkoutSession from '@/pages/workout-session';
 import CoachMonitoring from '@/pages/coach-monitoring';
 import CoachWorkoutDetail from '@/pages/coach-workout-detail';
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
-  if (isLoading) return null;
+  if (isLoading) return <LoadingPage />;
   if (!user) return <Redirect to="/login" />;
   return <Component />;
 }

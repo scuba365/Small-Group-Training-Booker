@@ -12,7 +12,7 @@ import {
   PROGRAMME_STATUSES,
   BLOCK_TYPES,
 } from "@workspace/db";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { requireCoach } from "../middleware/require-role";
 import { logger } from "../lib/logger";
@@ -218,7 +218,7 @@ router.post("/programmes", async (req: Request, res: Response): Promise<void> =>
   }
 });
 
-// GET /programmes/:id — full hierarchy
+// GET /programmes/:id — full hierarchy (batched, not N+1)
 router.get("/programmes/:id", async (req: Request, res: Response): Promise<void> => {
   const orgId = req.organisationId!;
   try {
@@ -228,119 +228,94 @@ router.get("/programmes/:id", async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Fetch full hierarchy in parallel
     const phases = await db
       .select()
       .from(phasesTable)
       .where(eq(phasesTable.programmeId, programme.id))
       .orderBy(asc(phasesTable.orderIndex));
 
-    const phaseIds = phases.map((p) => p.id);
-    if (phaseIds.length === 0) {
+    if (phases.length === 0) {
       res.json({ ...programme, phases: [] });
       return;
     }
 
-    const weeks = await db
-      .select()
-      .from(weeksTable)
-      .where(eq(weeksTable.phaseId, phaseIds[0]))
-      .orderBy(asc(weeksTable.orderIndex));
+    const phaseIds = phases.map((p) => p.id);
 
-    // For a full fetch we need all weeks across all phases — build with multiple queries
-    // In production this would be a single JOIN; for Sprint 003 clarity, loop is fine.
-    const allWeeks: (typeof weeks[number])[] = [];
-    for (const phase of phases) {
-      const w = await db
-        .select()
+    // Fetch all levels in parallel — one query per level, not one per parent row.
+    const [allWeeks, rawDays, rawWorkouts, rawBlocks, allWorkoutExerciseRows] = await Promise.all([
+      db.select()
         .from(weeksTable)
-        .where(eq(weeksTable.phaseId, phase.id))
-        .orderBy(asc(weeksTable.orderIndex));
-      allWeeks.push(...w);
-    }
+        .where(inArray(weeksTable.phaseId, phaseIds))
+        .orderBy(asc(weeksTable.orderIndex)),
 
-    const allDays: (typeof daysTable.$inferSelect)[] = [];
-    for (const week of allWeeks) {
-      const d = await db
-        .select()
+      db.select({ day: daysTable })
         .from(daysTable)
-        .where(eq(daysTable.weekId, week.id))
-        .orderBy(asc(daysTable.orderIndex));
-      allDays.push(...d);
-    }
+        .innerJoin(weeksTable, eq(daysTable.weekId, weeksTable.id))
+        .where(inArray(weeksTable.phaseId, phaseIds))
+        .orderBy(asc(daysTable.orderIndex)),
 
-    const allWorkouts: (typeof workoutsTable.$inferSelect)[] = [];
-    for (const day of allDays) {
-      const wo = await db
-        .select()
+      db.select({ workout: workoutsTable })
         .from(workoutsTable)
-        .where(eq(workoutsTable.dayId, day.id))
-        .orderBy(asc(workoutsTable.orderIndex));
-      allWorkouts.push(...wo);
-    }
+        .innerJoin(daysTable, eq(workoutsTable.dayId, daysTable.id))
+        .innerJoin(weeksTable, eq(daysTable.weekId, weeksTable.id))
+        .where(inArray(weeksTable.phaseId, phaseIds))
+        .orderBy(asc(workoutsTable.orderIndex)),
 
-    const allBlocks: (typeof workoutBlocksTable.$inferSelect)[] = [];
-    for (const workout of allWorkouts) {
-      const b = await db
-        .select()
+      db.select({ block: workoutBlocksTable })
         .from(workoutBlocksTable)
-        .where(eq(workoutBlocksTable.workoutId, workout.id))
-        .orderBy(asc(workoutBlocksTable.orderIndex));
-      allBlocks.push(...b);
-    }
+        .innerJoin(workoutsTable, eq(workoutBlocksTable.workoutId, workoutsTable.id))
+        .innerJoin(daysTable, eq(workoutsTable.dayId, daysTable.id))
+        .innerJoin(weeksTable, eq(daysTable.weekId, weeksTable.id))
+        .where(inArray(weeksTable.phaseId, phaseIds))
+        .orderBy(asc(workoutBlocksTable.orderIndex)),
 
-    const allWorkoutExercises: (typeof workoutExercisesTable.$inferSelect & {
-      exercise: typeof exercisesTable.$inferSelect | null;
-    })[] = [];
-    for (const block of allBlocks) {
-      const wes = await db
-        .select({
-          workoutExercise: workoutExercisesTable,
-          exercise: exercisesTable,
-        })
+      db.select({ workoutExercise: workoutExercisesTable, exercise: exercisesTable })
         .from(workoutExercisesTable)
+        .innerJoin(workoutBlocksTable, eq(workoutExercisesTable.blockId, workoutBlocksTable.id))
+        .innerJoin(workoutsTable, eq(workoutBlocksTable.workoutId, workoutsTable.id))
+        .innerJoin(daysTable, eq(workoutsTable.dayId, daysTable.id))
+        .innerJoin(weeksTable, eq(daysTable.weekId, weeksTable.id))
         .leftJoin(exercisesTable, eq(workoutExercisesTable.exerciseId, exercisesTable.id))
-        .where(eq(workoutExercisesTable.blockId, block.id))
-        .orderBy(asc(workoutExercisesTable.orderIndex));
-      for (const row of wes) {
-        allWorkoutExercises.push({ ...row.workoutExercise, exercise: row.exercise });
-      }
-    }
+        .where(inArray(weeksTable.phaseId, phaseIds))
+        .orderBy(asc(workoutExercisesTable.orderIndex)),
+    ]);
 
-    // Assemble hierarchy
-    const weExByBlock = new Map<string, typeof allWorkoutExercises>();
+    const allDays = rawDays.map((r) => r.day);
+    const allWorkouts = rawWorkouts.map((r) => r.workout);
+    const allBlocks = rawBlocks.map((r) => r.block);
+    const allWorkoutExercises = allWorkoutExerciseRows.map((r) => ({
+      ...r.workoutExercise,
+      exercise: r.exercise,
+    }));
+
+    // Assemble hierarchy bottom-up using Maps
+    const weByBlock = new Map<string, typeof allWorkoutExercises>();
     for (const we of allWorkoutExercises) {
-      const list = weExByBlock.get(we.blockId) ?? [];
-      list.push(we);
-      weExByBlock.set(we.blockId, list);
+      (weByBlock.get(we.blockId) ?? weByBlock.set(we.blockId, []).get(we.blockId)!).push(we);
     }
 
     const blocksByWorkout = new Map<string, (typeof allBlocks[number] & { exercises: typeof allWorkoutExercises })[]>();
     for (const block of allBlocks) {
-      const list = blocksByWorkout.get(block.workoutId) ?? [];
-      list.push({ ...block, exercises: weExByBlock.get(block.id) ?? [] });
-      blocksByWorkout.set(block.workoutId, list);
+      const list = blocksByWorkout.get(block.workoutId) ?? blocksByWorkout.set(block.workoutId, []).get(block.workoutId)!;
+      list.push({ ...block, exercises: weByBlock.get(block.id) ?? [] });
     }
 
-    const workoutsByDay = new Map<string, (typeof allWorkouts[number] & { blocks: typeof allBlocks })[]>();
+    const workoutsByDay = new Map<string, (typeof allWorkouts[number] & { blocks: ReturnType<typeof blocksByWorkout.get> })[]>();
     for (const wo of allWorkouts) {
-      const list = workoutsByDay.get(wo.dayId) ?? [];
-      list.push({ ...wo, blocks: blocksByWorkout.get(wo.id) ?? [] } as any);
-      workoutsByDay.set(wo.dayId, list);
+      const list = workoutsByDay.get(wo.dayId) ?? workoutsByDay.set(wo.dayId, []).get(wo.dayId)!;
+      list.push({ ...wo, blocks: blocksByWorkout.get(wo.id) ?? [] });
     }
 
-    const daysByWeek = new Map<string, (typeof allDays[number] & { workouts: typeof allWorkouts })[]>();
+    const daysByWeek = new Map<string, (typeof allDays[number] & { workouts: ReturnType<typeof workoutsByDay.get> })[]>();
     for (const day of allDays) {
-      const list = daysByWeek.get(day.weekId) ?? [];
-      list.push({ ...day, workouts: workoutsByDay.get(day.id) ?? [] } as any);
-      daysByWeek.set(day.weekId, list);
+      const list = daysByWeek.get(day.weekId) ?? daysByWeek.set(day.weekId, []).get(day.weekId)!;
+      list.push({ ...day, workouts: workoutsByDay.get(day.id) ?? [] });
     }
 
-    const weeksByPhase = new Map<string, (typeof allWeeks[number] & { days: typeof allDays })[]>();
+    const weeksByPhase = new Map<string, (typeof allWeeks[number] & { days: ReturnType<typeof daysByWeek.get> })[]>();
     for (const week of allWeeks) {
-      const list = weeksByPhase.get(week.phaseId) ?? [];
-      list.push({ ...week, days: daysByWeek.get(week.id) ?? [] } as any);
-      weeksByPhase.set(week.phaseId, list);
+      const list = weeksByPhase.get(week.phaseId) ?? weeksByPhase.set(week.phaseId, []).get(week.phaseId)!;
+      list.push({ ...week, days: daysByWeek.get(week.id) ?? [] });
     }
 
     res.json({
