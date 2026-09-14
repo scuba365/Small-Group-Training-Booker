@@ -54,6 +54,10 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import ExerciseLibrary from '@/pages/exercise-library';
 import ProgrammeBuilder, { ProgrammeList } from '@/pages/programme-builder';
+import MyProgramme from '@/pages/my-programme';
+import WorkoutSession from '@/pages/workout-session';
+import CoachMonitoring from '@/pages/coach-monitoring';
+import CoachWorkoutDetail from '@/pages/coach-workout-detail';
 
 const queryClient = new QueryClient();
 
@@ -342,7 +346,7 @@ function NotFoundPage() {
 
 function RoutedApp() {
   const [location] = useLocation();
-  return <ErrorBoundary resetKey={location}><AppShell><Switch><Route path="/" component={DashboardPage} /><Route path="/schedule" component={SchedulePage} /><Route path="/workouts" component={WorkoutsPage} /><Route path="/workouts/:workoutId" component={WorkoutDetailPage} /><Route path="/members" component={MembersPage} /><Route path="/exercises" component={ExerciseLibrary} /><Route path="/programmes" component={ProgrammeList} /><Route path="/programmes/:id" component={ProgrammeBuilder} /><Route component={NotFoundPage} /></Switch></AppShell></ErrorBoundary>;
+  return <ErrorBoundary resetKey={location}><AppShell><Switch><Route path="/" component={DashboardPage} /><Route path="/schedule" component={SchedulePage} /><Route path="/workouts" component={WorkoutsPage} /><Route path="/workouts/:workoutId" component={WorkoutDetailPage} /><Route path="/members" component={MembersPage} /><Route path="/exercises" component={ExerciseLibrary} /><Route path="/programmes" component={ProgrammeList} /><Route path="/programmes/:id" component={ProgrammeBuilder} /><Route path="/my-programme" component={MyProgramme} /><Route path="/workout/:id" component={WorkoutSession} /><Route path="/coach/monitoring" component={CoachMonitoring} /><Route path="/coach/workout/:id" component={CoachWorkoutDetail} /><Route component={NotFoundPage} /></Switch></AppShell></ErrorBoundary>;
 }
 
 function App() {

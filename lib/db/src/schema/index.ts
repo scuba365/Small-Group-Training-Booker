@@ -4,3 +4,4 @@ export * from "./organisations";
 export * from "./organisation-members";
 export * from "./exercises";
 export * from "./programmes";
+export * from "./performance";

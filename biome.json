@@ -1,0 +1,32 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.13/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "suspicious": {
+        "noExplicitAny": "off"
+      },
+      "style": {
+        "noNonNullAssertion": "off"
+      }
+    }
+  },
+  "formatter": { "enabled": false },
+  "files": {
+    "includes": [
+      "artifacts/**/*.ts",
+      "artifacts/**/*.tsx",
+      "lib/**/*.ts"
+    ],
+    "experimentalScannerIgnores": [
+      "**/dist/**",
+      "**/node_modules/**"
+    ]
+  }
+}
