@@ -14,19 +14,7 @@ import {
   organisationMembersTable,
 } from "./schema";
 import { eq } from "drizzle-orm";
-import { createHash } from "node:crypto";
-
-async function hashPassword(password: string): Promise<string> {
-  try {
-    const bcrypt = await import("bcryptjs");
-    return bcrypt.hash(password, 12);
-  } catch {
-    console.warn(
-      "bcryptjs not available — password stored as sha256 placeholder. Run pnpm install first.",
-    );
-    return "sha256:" + createHash("sha256").update(password).digest("hex");
-  }
-}
+import bcrypt from "bcryptjs";
 
 const BARRACKS_ORG_ID = "org_barracks_fitness_01";
 const BARRACKS_OWNER_ID = "user_stephen_cahill_01";
@@ -86,7 +74,7 @@ async function main() {
       .limit(1);
 
     if (byEmail.length === 0) {
-      const passwordHash = await hashPassword(ownerPassword);
+      const passwordHash = await bcrypt.hash(ownerPassword, 12);
       await db.insert(usersTable).values({
         id: BARRACKS_OWNER_ID,
         email: ownerEmail,
