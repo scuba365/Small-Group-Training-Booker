@@ -48,7 +48,9 @@ import type {
   Workout,
   WorkoutLog,
 } from '@workspace/api-client-react';
-import { Link, Route, Router as WouterRouter, Switch, useLocation, useParams } from 'wouter';
+import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation, useParams } from 'wouter';
+import { AuthProvider, useAuth } from '@/context/auth-context';
+import Login from '@/pages/login';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -60,6 +62,13 @@ import CoachMonitoring from '@/pages/coach-monitoring';
 import CoachWorkoutDetail from '@/pages/coach-workout-detail';
 
 const queryClient = new QueryClient();
+
+function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
+  const { user, isLoading } = useAuth();
+  if (isLoading) return null;
+  if (!user) return <Redirect to="/login" />;
+  return <Component />;
+}
 
 const cx = (...parts: Array<string | false | undefined>) => parts.filter(Boolean).join(' ');
 
@@ -346,11 +355,47 @@ function NotFoundPage() {
 
 function RoutedApp() {
   const [location] = useLocation();
-  return <ErrorBoundary resetKey={location}><AppShell><Switch><Route path="/" component={DashboardPage} /><Route path="/schedule" component={SchedulePage} /><Route path="/workouts" component={WorkoutsPage} /><Route path="/workouts/:workoutId" component={WorkoutDetailPage} /><Route path="/members" component={MembersPage} /><Route path="/exercises" component={ExerciseLibrary} /><Route path="/programmes" component={ProgrammeList} /><Route path="/programmes/:id" component={ProgrammeBuilder} /><Route path="/my-programme" component={MyProgramme} /><Route path="/workout/:id" component={WorkoutSession} /><Route path="/coach/monitoring" component={CoachMonitoring} /><Route path="/coach/workout/:id" component={CoachWorkoutDetail} /><Route component={NotFoundPage} /></Switch></AppShell></ErrorBoundary>;
+  return (
+    <ErrorBoundary resetKey={location}>
+      <Switch>
+        <Route path="/login" component={Login} />
+        <Route>
+          <AppShell>
+            <Switch>
+              <Route path="/" component={() => <ProtectedRoute component={DashboardPage} />} />
+              <Route path="/schedule" component={() => <ProtectedRoute component={SchedulePage} />} />
+              <Route path="/workouts" component={() => <ProtectedRoute component={WorkoutsPage} />} />
+              <Route path="/workouts/:workoutId" component={() => <ProtectedRoute component={WorkoutDetailPage} />} />
+              <Route path="/members" component={() => <ProtectedRoute component={MembersPage} />} />
+              <Route path="/exercises" component={() => <ProtectedRoute component={ExerciseLibrary} />} />
+              <Route path="/programmes" component={() => <ProtectedRoute component={ProgrammeList} />} />
+              <Route path="/programmes/:id" component={() => <ProtectedRoute component={ProgrammeBuilder} />} />
+              <Route path="/my-programme" component={() => <ProtectedRoute component={MyProgramme} />} />
+              <Route path="/workout/:id" component={() => <ProtectedRoute component={WorkoutSession} />} />
+              <Route path="/coach/monitoring" component={() => <ProtectedRoute component={CoachMonitoring} />} />
+              <Route path="/coach/workout/:id" component={() => <ProtectedRoute component={CoachWorkoutDetail} />} />
+              <Route component={NotFoundPage} />
+            </Switch>
+          </AppShell>
+        </Route>
+      </Switch>
+    </ErrorBoundary>
+  );
 }
 
 function App() {
-  return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><RoutedApp /></WouterRouter><Toaster /></TooltipProvider></QueryClientProvider>;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+          <AuthProvider>
+            <RoutedApp />
+          </AuthProvider>
+        </WouterRouter>
+        <Toaster />
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
 }
 
 export default App;
