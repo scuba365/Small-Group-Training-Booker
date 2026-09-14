@@ -1,8 +1,8 @@
 /**
  * Seed script: creates The Barracks Fitness organisation, owner user, and
- * backfills organisation_id on all existing records.
+ * OWNER membership.
  *
- * Run once: pnpm --filter @workspace/db run seed
+ * Run once: BARRACKS_OWNER_PASSWORD=<password> pnpm --filter @workspace/db run seed
  *
  * Safe to re-run: all inserts are idempotent (checks for existing records first).
  */
@@ -12,29 +12,15 @@ import {
   organisationsTable,
   usersTable,
   organisationMembersTable,
-  clientsTable,
-  leadsTable,
-  checkinDraftsTable,
 } from "./schema";
-import { eq, isNull } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
 import { createHash } from "node:crypto";
 
-// Inline bcryptjs-compatible hash using Node's built-in crypto.
-// We use bcryptjs in the API server, but we avoid importing it here
-// to keep the seed dependency-free.  For the seed we use a deterministic
-// approach: the API server's bcrypt.compare will still work because we
-// import bcryptjs in the seed as well.
-
 async function hashPassword(password: string): Promise<string> {
-  // Dynamic import so the seed works without bcryptjs if the module
-  // hasn't been installed yet — fall back to a sha256 placeholder.
   try {
     const bcrypt = await import("bcryptjs");
     return bcrypt.hash(password, 12);
   } catch {
-    // Fallback: sha256 prefixed so the API server knows it's not bcrypt.
-    // Replace with real bcrypt if bcryptjs isn't available at seed time.
     console.warn(
       "bcryptjs not available — password stored as sha256 placeholder. Run pnpm install first.",
     );
@@ -63,9 +49,9 @@ async function main() {
       slug: "the-barracks-fitness",
       timezone: "Europe/Dublin",
       currency: "EUR",
-      bookingOpenHours: 168, // 7 days
+      bookingOpenHours: 168,
       bookingCloseHours: 12,
-      noShowFeeCents: 500, // €5
+      noShowFeeCents: 500,
     });
     console.log("✓ Created organisation: The Barracks Fitness");
   } else {
@@ -153,54 +139,6 @@ async function main() {
     }
   } else {
     console.log("· Organisation membership already exists, skipping");
-  }
-
-  // 4. Backfill organisation_id on existing clients
-  const clientsWithoutOrg = await db
-    .select({ id: clientsTable.id })
-    .from(clientsTable)
-    .where(isNull(clientsTable.organisationId));
-
-  if (clientsWithoutOrg.length > 0) {
-    await db
-      .update(clientsTable)
-      .set({ organisationId: BARRACKS_ORG_ID })
-      .where(isNull(clientsTable.organisationId));
-    console.log(`✓ Backfilled organisation_id on ${clientsWithoutOrg.length} client records`);
-  } else {
-    console.log("· All clients already have organisation_id, skipping");
-  }
-
-  // 5. Backfill organisation_id on existing leads
-  const leadsWithoutOrg = await db
-    .select({ id: leadsTable.id })
-    .from(leadsTable)
-    .where(isNull(leadsTable.organisationId));
-
-  if (leadsWithoutOrg.length > 0) {
-    await db
-      .update(leadsTable)
-      .set({ organisationId: BARRACKS_ORG_ID })
-      .where(isNull(leadsTable.organisationId));
-    console.log(`✓ Backfilled organisation_id on ${leadsWithoutOrg.length} lead records`);
-  } else {
-    console.log("· All leads already have organisation_id, skipping");
-  }
-
-  // 6. Backfill organisation_id on existing checkin_drafts
-  const draftsWithoutOrg = await db
-    .select({ id: checkinDraftsTable.id })
-    .from(checkinDraftsTable)
-    .where(isNull(checkinDraftsTable.organisationId));
-
-  if (draftsWithoutOrg.length > 0) {
-    await db
-      .update(checkinDraftsTable)
-      .set({ organisationId: BARRACKS_ORG_ID })
-      .where(isNull(checkinDraftsTable.organisationId));
-    console.log(`✓ Backfilled organisation_id on ${draftsWithoutOrg.length} checkin draft records`);
-  } else {
-    console.log("· All checkin drafts already have organisation_id, skipping");
   }
 
   console.log("\n=== Seed complete ===");
