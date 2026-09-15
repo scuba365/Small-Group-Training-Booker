@@ -860,4 +860,389 @@ router.delete("/workout-exercises/:id", async (req: Request, res: Response): Pro
   }
 });
 
+// ─── Deep-copy helpers ────────────────────────────────────────────────────────
+
+async function copyBlocksAndExercises(
+  srcWorkoutId: string,
+  destWorkoutId: string,
+): Promise<void> {
+  const srcBlocks = await db
+    .select()
+    .from(workoutBlocksTable)
+    .where(eq(workoutBlocksTable.workoutId, srcWorkoutId))
+    .orderBy(asc(workoutBlocksTable.orderIndex));
+
+  for (const block of srcBlocks) {
+    const [newBlock] = await db
+      .insert(workoutBlocksTable)
+      .values({
+        workoutId: destWorkoutId,
+        name: block.name,
+        blockType: block.blockType,
+        orderIndex: block.orderIndex,
+        rounds: block.rounds,
+        timeCapSeconds: block.timeCapSeconds,
+        restBetweenRoundsSeconds: block.restBetweenRoundsSeconds,
+        notes: block.notes,
+      })
+      .returning();
+
+    const srcExercises = await db
+      .select()
+      .from(workoutExercisesTable)
+      .where(eq(workoutExercisesTable.blockId, block.id))
+      .orderBy(asc(workoutExercisesTable.orderIndex));
+
+    if (srcExercises.length > 0) {
+      await db.insert(workoutExercisesTable).values(
+        srcExercises.map((we) => ({
+          blockId: newBlock.id,
+          exerciseId: we.exerciseId,
+          orderIndex: we.orderIndex,
+          notes: we.notes,
+          sets: we.sets,
+          repsMin: we.repsMin,
+          repsMax: we.repsMax,
+          loadKg: we.loadKg,
+          loadPercent1rm: we.loadPercent1rm,
+          rpe: we.rpe,
+          rir: we.rir,
+          tempo: we.tempo,
+          restSeconds: we.restSeconds,
+          durationSeconds: we.durationSeconds,
+          distanceMeters: we.distanceMeters,
+          pacePerKm: we.pacePerKm,
+          calories: we.calories,
+          targetTime: we.targetTime,
+          targetPace: we.targetPace,
+        })),
+      );
+    }
+  }
+}
+
+async function copyDayWorkouts(srcDayId: string, destDayId: string): Promise<void> {
+  const srcWorkouts = await db
+    .select()
+    .from(workoutsTable)
+    .where(eq(workoutsTable.dayId, srcDayId))
+    .orderBy(asc(workoutsTable.orderIndex));
+
+  for (const workout of srcWorkouts) {
+    const [newWorkout] = await db
+      .insert(workoutsTable)
+      .values({
+        dayId: destDayId,
+        name: workout.name,
+        description: workout.description,
+        orderIndex: workout.orderIndex,
+      })
+      .returning();
+    await copyBlocksAndExercises(workout.id, newWorkout.id);
+  }
+}
+
+async function copyWeekDays(srcWeekId: string, destWeekId: string): Promise<void> {
+  const srcDays = await db
+    .select()
+    .from(daysTable)
+    .where(eq(daysTable.weekId, srcWeekId))
+    .orderBy(asc(daysTable.orderIndex));
+
+  for (const day of srcDays) {
+    const [newDay] = await db
+      .insert(daysTable)
+      .values({
+        weekId: destWeekId,
+        dayNumber: day.dayNumber,
+        label: day.label,
+        orderIndex: day.orderIndex,
+      })
+      .returning();
+    await copyDayWorkouts(day.id, newDay.id);
+  }
+}
+
+async function copyPhaseWeeks(srcPhaseId: string, destPhaseId: string): Promise<void> {
+  const srcWeeks = await db
+    .select()
+    .from(weeksTable)
+    .where(eq(weeksTable.phaseId, srcPhaseId))
+    .orderBy(asc(weeksTable.orderIndex));
+
+  for (const week of srcWeeks) {
+    const [newWeek] = await db
+      .insert(weeksTable)
+      .values({
+        phaseId: destPhaseId,
+        weekNumber: week.weekNumber,
+        label: week.label,
+        orderIndex: week.orderIndex,
+      })
+      .returning();
+    await copyWeekDays(week.id, newWeek.id);
+  }
+}
+
+// POST /programmes/:id/copy
+router.post("/programmes/:id/copy", async (req: Request, res: Response): Promise<void> => {
+  const orgId = req.organisationId!;
+  try {
+    const [src] = await db
+      .select()
+      .from(programmesTable)
+      .where(and(eq(programmesTable.id, req.params.id as string), eq(programmesTable.organisationId, orgId)))
+      .limit(1);
+    if (!src) { res.status(404).json({ error: "Programme not found" }); return; }
+
+    const [newProg] = await db
+      .insert(programmesTable)
+      .values({
+        organisationId: orgId,
+        name: `${src.name} (Copy)`,
+        description: src.description,
+        status: "DRAFT",
+        createdBy: req.user!.id,
+      })
+      .returning();
+
+    const srcPhases = await db
+      .select()
+      .from(phasesTable)
+      .where(eq(phasesTable.programmeId, src.id))
+      .orderBy(asc(phasesTable.orderIndex));
+
+    for (const phase of srcPhases) {
+      const [newPhase] = await db
+        .insert(phasesTable)
+        .values({
+          programmeId: newProg.id,
+          name: phase.name,
+          description: phase.description,
+          orderIndex: phase.orderIndex,
+        })
+        .returning();
+      await copyPhaseWeeks(phase.id, newPhase.id);
+    }
+
+    res.status(201).json(newProg);
+  } catch (err) {
+    logger.error({ err }, "Copy programme error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /phases/:id/copy
+router.post("/phases/:id/copy", async (req: Request, res: Response): Promise<void> => {
+  const orgId = req.organisationId!;
+  try {
+    const [src] = await db
+      .select({ phase: phasesTable, prog: programmesTable })
+      .from(phasesTable)
+      .innerJoin(programmesTable, eq(phasesTable.programmeId, programmesTable.id))
+      .where(and(eq(phasesTable.id, req.params.id as string), eq(programmesTable.organisationId, orgId)))
+      .limit(1);
+    if (!src) { res.status(404).json({ error: "Phase not found" }); return; }
+
+    const maxOrder = src.prog.id
+      ? (await db.select().from(phasesTable).where(eq(phasesTable.programmeId, src.phase.programmeId))).length
+      : 0;
+
+    const [newPhase] = await db
+      .insert(phasesTable)
+      .values({
+        programmeId: src.phase.programmeId,
+        name: `${src.phase.name} (Copy)`,
+        description: src.phase.description,
+        orderIndex: maxOrder,
+      })
+      .returning();
+    await copyPhaseWeeks(src.phase.id, newPhase.id);
+
+    res.status(201).json(newPhase);
+  } catch (err) {
+    logger.error({ err }, "Copy phase error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /weeks/:id/copy
+router.post("/weeks/:id/copy", async (req: Request, res: Response): Promise<void> => {
+  const orgId = req.organisationId!;
+  try {
+    const [src] = await db
+      .select({ week: weeksTable })
+      .from(weeksTable)
+      .innerJoin(phasesTable, eq(weeksTable.phaseId, phasesTable.id))
+      .innerJoin(programmesTable, eq(phasesTable.programmeId, programmesTable.id))
+      .where(and(eq(weeksTable.id, req.params.id as string), eq(programmesTable.organisationId, orgId)))
+      .limit(1);
+    if (!src) { res.status(404).json({ error: "Week not found" }); return; }
+
+    const siblings = await db.select().from(weeksTable).where(eq(weeksTable.phaseId, src.week.phaseId));
+
+    const [newWeek] = await db
+      .insert(weeksTable)
+      .values({
+        phaseId: src.week.phaseId,
+        weekNumber: siblings.length + 1,
+        label: src.week.label ? `${src.week.label} (Copy)` : undefined,
+        orderIndex: siblings.length,
+      })
+      .returning();
+    await copyWeekDays(src.week.id, newWeek.id);
+
+    res.status(201).json(newWeek);
+  } catch (err) {
+    logger.error({ err }, "Copy week error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /days/:id/copy
+router.post("/days/:id/copy", async (req: Request, res: Response): Promise<void> => {
+  const orgId = req.organisationId!;
+  try {
+    const [src] = await db
+      .select({ day: daysTable })
+      .from(daysTable)
+      .innerJoin(weeksTable, eq(daysTable.weekId, weeksTable.id))
+      .innerJoin(phasesTable, eq(weeksTable.phaseId, phasesTable.id))
+      .innerJoin(programmesTable, eq(phasesTable.programmeId, programmesTable.id))
+      .where(and(eq(daysTable.id, req.params.id as string), eq(programmesTable.organisationId, orgId)))
+      .limit(1);
+    if (!src) { res.status(404).json({ error: "Day not found" }); return; }
+
+    const siblings = await db.select().from(daysTable).where(eq(daysTable.weekId, src.day.weekId));
+
+    const [newDay] = await db
+      .insert(daysTable)
+      .values({
+        weekId: src.day.weekId,
+        dayNumber: siblings.length + 1,
+        label: src.day.label ? `${src.day.label} (Copy)` : `Day ${siblings.length + 1}`,
+        orderIndex: siblings.length,
+      })
+      .returning();
+    await copyDayWorkouts(src.day.id, newDay.id);
+
+    res.status(201).json(newDay);
+  } catch (err) {
+    logger.error({ err }, "Copy day error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /workouts/:id/copy  — copies into the same day
+router.post("/workouts/:id/copy", async (req: Request, res: Response): Promise<void> => {
+  const orgId = req.organisationId!;
+  try {
+    const [src] = await db
+      .select({ workout: workoutsTable })
+      .from(workoutsTable)
+      .innerJoin(daysTable, eq(workoutsTable.dayId, daysTable.id))
+      .innerJoin(weeksTable, eq(daysTable.weekId, weeksTable.id))
+      .innerJoin(phasesTable, eq(weeksTable.phaseId, phasesTable.id))
+      .innerJoin(programmesTable, eq(phasesTable.programmeId, programmesTable.id))
+      .where(and(eq(workoutsTable.id, req.params.id as string), eq(programmesTable.organisationId, orgId)))
+      .limit(1);
+    if (!src) { res.status(404).json({ error: "Workout not found" }); return; }
+
+    const siblings = await db
+      .select()
+      .from(workoutsTable)
+      .where(eq(workoutsTable.dayId, src.workout.dayId!));
+
+    const [newWorkout] = await db
+      .insert(workoutsTable)
+      .values({
+        dayId: src.workout.dayId,
+        name: `${src.workout.name} (Copy)`,
+        description: src.workout.description,
+        orderIndex: siblings.length,
+      })
+      .returning();
+    await copyBlocksAndExercises(src.workout.id, newWorkout.id);
+
+    res.status(201).json(newWorkout);
+  } catch (err) {
+    logger.error({ err }, "Copy workout error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /blocks/:id/copy — copies block into the same workout
+router.post("/blocks/:id/copy", async (req: Request, res: Response): Promise<void> => {
+  const orgId = req.organisationId!;
+  try {
+    const [src] = await db
+      .select({ block: workoutBlocksTable })
+      .from(workoutBlocksTable)
+      .innerJoin(workoutsTable, eq(workoutBlocksTable.workoutId, workoutsTable.id))
+      .innerJoin(daysTable, eq(workoutsTable.dayId, daysTable.id))
+      .innerJoin(weeksTable, eq(daysTable.weekId, weeksTable.id))
+      .innerJoin(phasesTable, eq(weeksTable.phaseId, phasesTable.id))
+      .innerJoin(programmesTable, eq(phasesTable.programmeId, programmesTable.id))
+      .where(and(eq(workoutBlocksTable.id, req.params.id as string), eq(programmesTable.organisationId, orgId)))
+      .limit(1);
+    if (!src) { res.status(404).json({ error: "Block not found" }); return; }
+
+    const siblings = await db
+      .select()
+      .from(workoutBlocksTable)
+      .where(eq(workoutBlocksTable.workoutId, src.block.workoutId));
+
+    const [newBlock] = await db
+      .insert(workoutBlocksTable)
+      .values({
+        workoutId: src.block.workoutId,
+        name: src.block.name,
+        blockType: src.block.blockType,
+        orderIndex: siblings.length,
+        rounds: src.block.rounds,
+        timeCapSeconds: src.block.timeCapSeconds,
+        restBetweenRoundsSeconds: src.block.restBetweenRoundsSeconds,
+        notes: src.block.notes,
+      })
+      .returning();
+
+    const srcExercises = await db
+      .select()
+      .from(workoutExercisesTable)
+      .where(eq(workoutExercisesTable.blockId, src.block.id))
+      .orderBy(asc(workoutExercisesTable.orderIndex));
+
+    if (srcExercises.length > 0) {
+      await db.insert(workoutExercisesTable).values(
+        srcExercises.map((we) => ({
+          blockId: newBlock.id,
+          exerciseId: we.exerciseId,
+          orderIndex: we.orderIndex,
+          notes: we.notes,
+          sets: we.sets,
+          repsMin: we.repsMin,
+          repsMax: we.repsMax,
+          loadKg: we.loadKg,
+          loadPercent1rm: we.loadPercent1rm,
+          rpe: we.rpe,
+          rir: we.rir,
+          tempo: we.tempo,
+          restSeconds: we.restSeconds,
+          durationSeconds: we.durationSeconds,
+          distanceMeters: we.distanceMeters,
+          pacePerKm: we.pacePerKm,
+          calories: we.calories,
+          targetTime: we.targetTime,
+          targetPace: we.targetPace,
+        })),
+      );
+    }
+
+    res.status(201).json(newBlock);
+  } catch (err) {
+    logger.error({ err }, "Copy block error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export default router;

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, useEffect, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowDownRight,
@@ -50,6 +50,7 @@ import type {
 } from '@workspace/api-client-react';
 import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation, useParams } from 'wouter';
 import { AuthProvider, useAuth } from '@/context/auth-context';
+import { ModeProvider, useMode } from '@/context/mode-context';
 import Login from '@/pages/login';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
@@ -162,26 +163,124 @@ function Badge({ children, tone = 'muted' }: { children: ReactNode; tone?: 'mute
   return <span className={cx('inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[.12em]', tones[tone])}>{children}</span>;
 }
 
+interface OrgMember { id: string; name: string; email: string; role: string; }
+
+function ModeBar() {
+  const { user } = useAuth();
+  const { mode, previewMember, setMode, setPreviewMember, exitPreview } = useMode();
+  const [memberPickerOpen, setMemberPickerOpen] = useState(false);
+  const [members, setMembers] = useState<OrgMember[]>([]);
+
+  const isCoach = user?.role === 'COACH' || user?.role === 'OWNER';
+  if (!isCoach) return null;
+
+  async function openPicker() {
+    try {
+      const res = await fetch('/api/coach/members', { credentials: 'include' });
+      if (res.ok) setMembers(await res.json());
+    } catch {}
+    setMemberPickerOpen(true);
+  }
+
+  function selectMember(m: OrgMember) {
+    setPreviewMember(m);
+    setMode('MEMBER_PREVIEW');
+    setMemberPickerOpen(false);
+  }
+
+  if (mode === 'MEMBER_PREVIEW') {
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-amber-500/15 border border-amber-500/30 px-3 py-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
+        <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+        MEMBER PREVIEW — {previewMember?.name ?? 'Unknown'}
+        <button
+          onClick={exitPreview}
+          className="ml-2 rounded px-2 py-0.5 bg-amber-500/20 hover:bg-amber-500/40 transition text-xs"
+        >
+          Exit
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="flex items-center rounded-lg border border-border overflow-hidden text-xs font-semibold">
+        <span className="px-3 py-1.5 bg-primary text-primary-foreground">COACH</span>
+        <button
+          onClick={openPicker}
+          className="px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition"
+        >
+          MEMBER PREVIEW
+        </button>
+      </div>
+      {memberPickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setMemberPickerOpen(false)}>
+          <div className="bg-card rounded-2xl border border-border shadow-xl w-80 p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-sm">Preview as member</h3>
+              <button onClick={() => setMemberPickerOpen(false)} className="text-muted-foreground hover:text-foreground"><X size={16} /></button>
+            </div>
+            {members.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">No members found</p>
+            ) : (
+              <div className="space-y-1 max-h-72 overflow-y-auto">
+                {members.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => selectMember(m)}
+                    className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-muted transition"
+                  >
+                    <Avatar initials={m.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()} size="sm" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold truncate">{m.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">{m.email}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function AppShell({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const [mobileNav, setMobileNav] = useState(false);
-  const links = [
+  const { user, logout } = useAuth();
+  const { mode, previewMember } = useMode();
+
+  const isCoach = user?.role === 'COACH' || user?.role === 'OWNER';
+  const links = isCoach ? [
     { href: '/', label: 'Overview', icon: Home },
     { href: '/schedule', label: 'Schedule', icon: CalendarDays },
-    { href: '/workouts', label: 'Workouts', icon: Dumbbell },
     { href: '/exercises', label: 'Exercises', icon: Dumbbell },
     { href: '/programmes', label: 'Programmes', icon: BarChart3 },
     { href: '/members', label: 'Roster', icon: Users },
+    { href: '/coach/monitoring', label: 'Monitoring', icon: TrendingUp },
+  ] : [
+    { href: '/', label: 'Overview', icon: Home },
+    { href: '/my-programme', label: 'My Programme', icon: BarChart3 },
+    { href: '/workouts', label: 'Workouts', icon: Dumbbell },
   ];
+
   const active = (href: string) => href === '/' ? location === '/' : location.startsWith(href);
+
+  const initials = user?.name
+    ? user.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+    : '??';
+
   return (
     <div className="grain min-h-[100dvh] bg-background text-foreground">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[248px] flex-col bg-sidebar px-5 py-6 text-sidebar-foreground lg:flex">
         <Link href="/" className="mb-12 flex items-center gap-3 px-2" data-testid="link-brand">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground"><Dumbbell size={19} strokeWidth={2.5} /></span>
-          <span><span className="block text-[15px] font-bold tracking-tight">Training</span><span className="block text-[15px] font-bold tracking-tight text-sidebar-primary">Studio</span></span>
+          <span><span className="block text-[15px] font-bold tracking-tight">Barracks</span><span className="block text-[15px] font-bold tracking-tight text-sidebar-primary">OS</span></span>
         </Link>
-        <p className="studio-label px-3 text-sidebar-foreground/45">Your training</p>
+        <p className="studio-label px-3 text-sidebar-foreground/45">{isCoach ? 'Coach tools' : 'Your training'}</p>
         <nav className="mt-3 space-y-1" aria-label="Primary navigation">
           {links.map(({ href, label, icon: Icon }) => (
             <Link key={href} href={href} className={cx('group flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition', active(href) ? 'bg-sidebar-accent text-sidebar-foreground' : 'text-sidebar-foreground/60 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground')} data-testid={`link-nav-${label.toLowerCase()}`}>
@@ -191,30 +290,50 @@ function AppShell({ children }: { children: ReactNode }) {
             </Link>
           ))}
         </nav>
-        <div className="mt-auto rounded-2xl border border-sidebar-border bg-sidebar-accent/65 p-4">
-          <div className="mb-3 flex items-center justify-between"><span className="studio-label text-sidebar-foreground/50">Coach note</span><Sparkles size={14} className="text-sidebar-primary" /></div>
-          <p className="text-sm leading-5 text-sidebar-foreground/85">Small wins compound. Keep showing up for the next good rep.</p>
-          <div className="mt-4 h-1 rounded-full bg-sidebar-border"><div className="h-1 w-[72%] rounded-full bg-sidebar-primary" /></div>
-          <p className="mt-2 text-[10px] text-sidebar-foreground/45">72% through your current block</p>
-        </div>
-        <div className="mt-5 flex items-center gap-3 border-t border-sidebar-border pt-5">
-          <Avatar initials="AM" color="hsl(12 76% 65%)" size="sm" />
-          <div className="min-w-0"><p className="truncate text-sm font-semibold">Alex Morgan</p><p className="text-xs text-sidebar-foreground/50">Member since 2024</p></div>
-          <button className="ml-auto rounded-lg p-1 text-sidebar-foreground/50 hover:bg-sidebar-accent hover:text-sidebar-foreground" onClick={() => setMobileNav(!mobileNav)} aria-label="Open profile menu" data-testid="button-profile-menu"><Menu size={16} /></button>
+        <div className="mt-auto pt-4 border-t border-sidebar-border">
+          <div className="flex items-center gap-3">
+            <Avatar initials={initials} color="hsl(12 76% 65%)" size="sm" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold">{user?.name ?? 'User'}</p>
+              <p className="text-xs text-sidebar-foreground/50 truncate">{user?.email}</p>
+            </div>
+            <button
+              onClick={() => logout()}
+              className="rounded-lg p-1 text-sidebar-foreground/50 hover:bg-sidebar-accent hover:text-sidebar-foreground text-xs"
+              title="Sign out"
+            >
+              <X size={15} />
+            </button>
+          </div>
         </div>
       </aside>
 
       <header className="sticky top-0 z-20 flex h-[68px] items-center justify-between border-b border-border/70 bg-background/90 px-5 backdrop-blur lg:ml-[248px] lg:px-10">
         <div className="flex items-center gap-3 lg:hidden">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary"><Dumbbell size={17} /></span>
-          <span className="font-bold">Training Studio</span>
+          <span className="font-bold">Barracks OS</span>
         </div>
-        <div className="hidden lg:block"><span className="studio-mono text-[10px] uppercase tracking-[.18em] text-muted-foreground">Private coaching / </span><span className="studio-mono text-[10px] uppercase tracking-[.18em] text-foreground">{location === '/' ? 'overview' : location.replace('/', '')}</span></div>
+        <div className="hidden lg:block">
+          <span className="studio-mono text-[10px] uppercase tracking-[.18em] text-muted-foreground">
+            {isCoach ? 'Coach / ' : 'Member / '}
+          </span>
+          <span className="studio-mono text-[10px] uppercase tracking-[.18em] text-foreground">
+            {location === '/' ? 'overview' : location.replace('/', '')}
+          </span>
+        </div>
         <div className="ml-auto flex items-center gap-3">
-          <span className="hidden text-right sm:block"><span className="block text-xs font-semibold">Thursday, 24 October</span><span className="block text-[11px] text-muted-foreground">Stay close to the work.</span></span>
-          <Avatar initials="AM" color="hsl(12 76% 65%)" size="sm" />
+          <ModeBar />
+          <Avatar initials={initials} color="hsl(12 76% 65%)" size="sm" />
         </div>
       </header>
+
+      {/* Member preview banner */}
+      {mode === 'MEMBER_PREVIEW' && (
+        <div className="lg:ml-[248px] bg-amber-500/10 border-b border-amber-500/20 px-5 py-2 text-xs text-amber-700 dark:text-amber-400 lg:px-10">
+          Viewing as <strong>{previewMember?.name}</strong> — this is a coach preview. Member cannot see this bar.
+        </div>
+      )}
+
       {mobileNav && <div className="fixed inset-0 z-40 bg-foreground/20 lg:hidden" onClick={() => setMobileNav(false)}><div className="w-72 bg-sidebar p-5 text-sidebar-foreground" onClick={(event) => event.stopPropagation()}><div className="mb-8 flex items-center justify-between"><span className="font-bold">Menu</span><button onClick={() => setMobileNav(false)} data-testid="button-close-menu"><X size={18} /></button></div>{links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} onClick={() => setMobileNav(false)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm" data-testid={`link-mobile-${label.toLowerCase()}`}><Icon size={17} />{label}</Link>)}</div></div>}
       <main className="mx-auto max-w-[1440px] px-5 py-7 sm:px-8 lg:ml-[248px] lg:px-10 lg:py-10">{children}</main>
       <nav className="fixed inset-x-3 bottom-3 z-30 flex items-center justify-around rounded-2xl border border-border bg-card/95 p-2 shadow-xl backdrop-blur lg:hidden">
@@ -396,7 +515,9 @@ function App() {
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
           <AuthProvider>
-            <RoutedApp />
+            <ModeProvider>
+              <RoutedApp />
+            </ModeProvider>
           </AuthProvider>
         </WouterRouter>
         <Toaster />

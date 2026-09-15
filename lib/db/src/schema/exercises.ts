@@ -1,5 +1,39 @@
 import { pgTable, text, boolean, timestamp, index } from "drizzle-orm/pg-core";
 
+export const MUSCLE_GROUPS = [
+  "Chest",
+  "Back",
+  "Shoulders",
+  "Biceps",
+  "Triceps",
+  "Quads",
+  "Hamstrings",
+  "Glutes",
+  "Calves",
+  "Core",
+  "Full Body",
+  "Other",
+] as const;
+export type MuscleGroup = (typeof MUSCLE_GROUPS)[number];
+
+export const EQUIPMENT_OPTIONS = [
+  "Barbell",
+  "Dumbbell",
+  "Kettlebell",
+  "Cable",
+  "Machine",
+  "Bench",
+  "Rack",
+  "SkiErg",
+  "Bike",
+  "Sled",
+  "Wall Ball",
+  "Sandbag",
+  "Bodyweight",
+  "Other",
+] as const;
+export type EquipmentOption = (typeof EQUIPMENT_OPTIONS)[number];
+
 /**
  * Exercise types supported by the platform.
  * STRENGTH: sets/reps/load-based movements
@@ -21,10 +55,10 @@ export const exercisesTable = pgTable(
     name: text("name").notNull(),
     description: text("description"),
     exerciseType: text("exercise_type").notNull().default("STRENGTH"),
-    // Comma-delimited list fields
-    primaryMuscleGroups: text("primary_muscle_groups"),
-    equipment: text("equipment"),
+    primaryMuscleGroups: text("primary_muscle_groups").array(),
+    equipment: text("equipment").array(),
     videoUrl: text("video_url"),
+    instructions: text("instructions"),
     isArchived: boolean("is_archived").notNull().default(false),
     createdBy: text("created_by"),
     createdAt: timestamp("created_at").defaultNow(),

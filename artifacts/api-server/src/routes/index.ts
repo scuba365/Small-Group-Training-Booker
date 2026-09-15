@@ -9,6 +9,7 @@ import assignmentsRouter from "./assignments";
 import meRouter from "./me";
 import workoutInstancesRouter from "./workout-instances";
 import coachMonitoringRouter from "./coach-monitoring";
+import workoutTemplatesRouter from "./workout-templates";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(assignmentsRouter);
 router.use(meRouter);
 router.use(workoutInstancesRouter);
 router.use(coachMonitoringRouter);
+router.use(workoutTemplatesRouter);
 
 export default router;

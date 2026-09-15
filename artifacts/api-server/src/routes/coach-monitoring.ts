@@ -8,6 +8,7 @@ import {
   exerciseInstancesTable,
   setLogsTable,
   usersTable,
+  organisationMembersTable,
 } from "@workspace/db";
 import { eq, and, desc, inArray, asc } from "drizzle-orm";
 import { requireCoach } from "../middleware/require-role";
@@ -134,6 +135,33 @@ router.get("/coach/assignments", async (req: Request, res: Response): Promise<vo
     res.json(rows);
   } catch (err) {
     logger.error({ err }, "Coach assignments list error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /coach/members — list all active org members (for assignment + preview picker)
+router.get("/coach/members", async (req: Request, res: Response): Promise<void> => {
+  const orgId = req.organisationId!;
+  try {
+    const rows = await db
+      .select({
+        id: usersTable.id,
+        name: usersTable.name,
+        email: usersTable.email,
+        role: organisationMembersTable.role,
+      })
+      .from(organisationMembersTable)
+      .innerJoin(usersTable, eq(organisationMembersTable.userId, usersTable.id))
+      .where(
+        and(
+          eq(organisationMembersTable.organisationId, orgId),
+          eq(organisationMembersTable.status, "ACTIVE"),
+        ),
+      )
+      .orderBy(asc(usersTable.name));
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "List members error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

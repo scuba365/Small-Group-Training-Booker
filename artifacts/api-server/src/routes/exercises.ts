@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { exercisesTable, EXERCISE_TYPES } from "@workspace/db";
+import { exercisesTable, EXERCISE_TYPES, MUSCLE_GROUPS, EQUIPMENT_OPTIONS } from "@workspace/db";
 import { eq, and, or, ilike, isNull, asc } from "drizzle-orm";
 import { z } from "zod";
 import { requireCoach } from "../middleware/require-role";
@@ -9,15 +9,18 @@ import type { Request, Response } from "express";
 
 const router = Router();
 
-// All exercise routes require COACH or above.
 router.use(requireCoach);
+
+const MuscleGroupsSchema = z.array(z.enum(MUSCLE_GROUPS)).optional();
+const EquipmentSchema = z.array(z.enum(EQUIPMENT_OPTIONS)).optional();
 
 const CreateExerciseBody = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(2000).optional(),
+  instructions: z.string().max(10000).optional(),
   exerciseType: z.enum(EXERCISE_TYPES).default("STRENGTH"),
-  primaryMuscleGroups: z.string().max(500).optional(),
-  equipment: z.string().max(500).optional(),
+  primaryMuscleGroups: MuscleGroupsSchema,
+  equipment: EquipmentSchema,
   videoUrl: z.string().url().optional().or(z.literal("")),
 });
 
@@ -26,13 +29,14 @@ const UpdateExerciseBody = CreateExerciseBody.partial();
 const ExerciseQueryParams = z.object({
   search: z.string().optional(),
   exerciseType: z.enum(EXERCISE_TYPES).optional(),
+  muscleGroup: z.string().optional(),
   includeGlobal: z
     .string()
     .transform((v) => v !== "false")
     .optional(),
 });
 
-// GET /exercises — list org exercises + global built-ins
+// GET /exercises
 router.get("/exercises", async (req: Request, res: Response): Promise<void> => {
   const parsed = ExerciseQueryParams.safeParse(req.query);
   const params = parsed.success ? parsed.data : {};
@@ -46,17 +50,12 @@ router.get("/exercises", async (req: Request, res: Response): Promise<void> => {
       .from(exercisesTable)
       .where(
         and(
-          // Org's own exercises OR global built-ins if requested
           includeGlobal
             ? or(eq(exercisesTable.organisationId, orgId), isNull(exercisesTable.organisationId))
             : eq(exercisesTable.organisationId, orgId),
           eq(exercisesTable.isArchived, false),
-          params.search
-            ? ilike(exercisesTable.name, `%${params.search}%`)
-            : undefined,
-          params.exerciseType
-            ? eq(exercisesTable.exerciseType, params.exerciseType)
-            : undefined,
+          params.search ? ilike(exercisesTable.name, `%${params.search}%`) : undefined,
+          params.exerciseType ? eq(exercisesTable.exerciseType, params.exerciseType) : undefined,
         ),
       )
       .orderBy(asc(exercisesTable.name));
@@ -78,7 +77,6 @@ router.get("/exercises/:id", async (req: Request, res: Response): Promise<void> 
         and(
           eq(exercisesTable.id, req.params.id as string),
           eq(exercisesTable.isArchived, false),
-          // Org's own or global
           or(eq(exercisesTable.organisationId, orgId), isNull(exercisesTable.organisationId)),
         ),
       )
@@ -120,7 +118,7 @@ router.post("/exercises", async (req: Request, res: Response): Promise<void> => 
   }
 });
 
-// PUT /exercises/:id — update org-owned exercise only
+// PUT /exercises/:id
 router.put("/exercises/:id", async (req: Request, res: Response): Promise<void> => {
   const parsed = UpdateExerciseBody.safeParse(req.body);
   if (!parsed.success) {
@@ -156,7 +154,7 @@ router.put("/exercises/:id", async (req: Request, res: Response): Promise<void> 
   }
 });
 
-// DELETE /exercises/:id — soft delete (archive)
+// DELETE /exercises/:id — soft delete
 router.delete("/exercises/:id", async (req: Request, res: Response): Promise<void> => {
   try {
     const [archived] = await db

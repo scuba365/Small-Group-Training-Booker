@@ -78,9 +78,11 @@ export const workoutsTable = pgTable("workouts", {
   id: text("id")
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
-  dayId: text("day_id")
-    .notNull()
-    .references(() => daysTable.id, { onDelete: "cascade" }),
+  // null when isTemplate = true (templates are not attached to a day)
+  dayId: text("day_id").references(() => daysTable.id, { onDelete: "cascade" }),
+  // org-scoped; set for templates (dayId is null); derived from day for programme workouts
+  organisationId: text("organisation_id"),
+  isTemplate: boolean("is_template").notNull().default(false),
   name: text("name").notNull(),
   description: text("description"),
   orderIndex: integer("order_index").notNull().default(0),
