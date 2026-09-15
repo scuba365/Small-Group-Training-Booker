@@ -1,0 +1,1 @@
+- [Deployment auth seeding](deployment-auth-seeding.md) — production schema is present after publish, but development seed records are not copied.

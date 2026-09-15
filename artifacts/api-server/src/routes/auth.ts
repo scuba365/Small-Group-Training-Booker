@@ -30,7 +30,139 @@ function generateSessionToken(): string {
   return randomBytes(32).toString("hex");
 }
 
+function slugify(value: string): string {
+  const slug = value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return slug || `studio-${randomBytes(4).toString("hex")}`;
+}
+
 const router = Router();
+
+// GET /api/auth/setup-status
+// Publishing does not copy development seed records into the production database.
+// This lets the client present a first-run setup screen when production is empty.
+router.get("/auth/setup-status", async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const users = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .limit(1);
+
+    res.json({ needsSetup: users.length === 0 });
+  } catch (err) {
+    logger.error({ err }, "Setup status error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /api/auth/setup
+// Creates the first owner account for a newly published studio.
+router.post("/auth/setup", async (req: Request, res: Response): Promise<void> => {
+  const { name, email, password, studioName } = req.body ?? {};
+
+  if (
+    typeof name !== "string" ||
+    typeof email !== "string" ||
+    typeof password !== "string" ||
+    typeof studioName !== "string"
+  ) {
+    res.status(400).json({ error: "Name, studio name, email, and password are required" });
+    return;
+  }
+
+  const normalizedName = name.trim();
+  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedStudioName = studioName.trim();
+
+  if (!normalizedName || !normalizedStudioName || !normalizedEmail.includes("@")) {
+    res.status(400).json({ error: "Enter a valid name, studio name, and email" });
+    return;
+  }
+
+  if (password.length < 8) {
+    res.status(400).json({ error: "Password must be at least 8 characters" });
+    return;
+  }
+
+  try {
+    const existingUsers = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .limit(1);
+
+    if (existingUsers.length > 0) {
+      res.status(409).json({ error: "Studio setup is already complete. Sign in instead." });
+      return;
+    }
+
+    const userId = `user_${randomUUID()}`;
+    const organisationId = `org_${randomUUID()}`;
+    const membershipId = `orgm_${randomUUID()}`;
+    const token = generateSessionToken();
+    const sessionId = randomUUID();
+    const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+    const passwordHash = await bcrypt.hash(password, 12);
+    const organisationSlug = `${slugify(normalizedStudioName)}-${randomBytes(3).toString("hex")}`;
+
+    await db.transaction(async (tx) => {
+      await tx.insert(organisationsTable).values({
+        id: organisationId,
+        name: normalizedStudioName,
+        slug: organisationSlug,
+        timezone: "Europe/Dublin",
+        currency: "EUR",
+      });
+
+      await tx.insert(usersTable).values({
+        id: userId,
+        email: normalizedEmail,
+        passwordHash,
+        name: normalizedName,
+      });
+
+      await tx.insert(organisationMembersTable).values({
+        id: membershipId,
+        organisationId,
+        userId,
+        role: "OWNER",
+        status: "ACTIVE",
+      });
+
+      await tx.insert(authSessionsTable).values({
+        id: sessionId,
+        token,
+        userId,
+        expiresAt,
+      });
+    });
+
+    logger.info({ userId, organisationId }, "Studio owner account created");
+
+    res.cookie(SESSION_COOKIE, token, cookieOptions(req));
+    res.status(201).json({
+      user: {
+        id: userId,
+        email: normalizedEmail,
+        name: normalizedName,
+        role: "OWNER",
+      },
+      organisation: {
+        id: organisationId,
+        name: normalizedStudioName,
+        slug: organisationSlug,
+        timezone: "Europe/Dublin",
+        currency: "EUR",
+      },
+    });
+  } catch (err) {
+    logger.error({ err }, "Studio setup error");
+    res.status(500).json({ error: "Unable to create the studio account" });
+  }
+});
 
 // POST /api/auth/login
 router.post("/auth/login", async (req: Request, res: Response): Promise<void> => {

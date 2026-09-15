@@ -21,6 +21,12 @@ interface AuthState {
   org: SessionOrg | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  createOwner: (
+    name: string,
+    studioName: string,
+    email: string,
+    password: string,
+  ) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -62,6 +68,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     navigate("/");
   };
 
+  const createOwner = async (
+    name: string,
+    studioName: string,
+    email: string,
+    password: string,
+  ) => {
+    const r = await fetch("/api/auth/setup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ name, studioName, email, password }),
+    });
+    if (!r.ok) {
+      const data = await r.json().catch(() => ({}));
+      throw new Error(data.error || "Studio setup failed");
+    }
+    const data = await r.json();
+    setUser(data.user);
+    setOrg(data.organisation ?? null);
+    navigate("/");
+  };
+
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     setUser(null);
@@ -70,7 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, org, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ user, org, isLoading, login, createOwner, logout }}>
       {children}
     </AuthContext.Provider>
   );
