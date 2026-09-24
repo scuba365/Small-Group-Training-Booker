@@ -86,6 +86,9 @@ export const exercisesTable = pgTable(
     equipment: delimitedTextArray("equipment"),
     videoUrl: text("video_url"),
     instructions: text("instructions"),
+    // null = custom exercise; "free-exercise-db" = seeded from Free Exercise DB
+    source: text("source"),
+    sourceId: text("source_id"),
     isArchived: boolean("is_archived").notNull().default(false),
     createdBy: text("created_by"),
     createdAt: timestamp("created_at").defaultNow(),
