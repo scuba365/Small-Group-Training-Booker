@@ -13,7 +13,7 @@
 
 import { db } from "./index.js";
 import { exercisesTable } from "./schema/index.js";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 
 // ---------------------------------------------------------------------------
 // Source constants
@@ -228,8 +228,20 @@ export async function importExercises(
 // CLI entrypoint
 // ---------------------------------------------------------------------------
 
+async function ensureColumns() {
+  // Add source tracking columns if they don't exist yet (safe to run repeatedly).
+  // This allows the seed to run without requiring a separate push-force step first.
+  await db.execute(sql`ALTER TABLE exercises ADD COLUMN IF NOT EXISTS source text`);
+  await db.execute(sql`ALTER TABLE exercises ADD COLUMN IF NOT EXISTS source_id text`);
+}
+
 async function main() {
   console.log("=== Free Exercise DB Import ===\n");
+
+  process.stdout.write("Ensuring schema columns exist... ");
+  await ensureColumns();
+  console.log("done\n");
+
   console.log(`Fetching data from:\n  ${DATA_URL}\n`);
 
   let data: unknown[];
