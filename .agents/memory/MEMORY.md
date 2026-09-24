@@ -1,1 +1,2 @@
 - [Deployment auth seeding](deployment-auth-seeding.md) — production schema is present after publish, but development seed records are not copied.
+- [Delimited list schema compatibility](delimited-list-schema-compatibility.md) — keep array-shaped app data backed by `text` when production already stores delimited strings.

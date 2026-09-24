@@ -1,4 +1,11 @@
-import { pgTable, text, boolean, timestamp, index } from "drizzle-orm/pg-core";
+import {
+  customType,
+  pgTable,
+  text,
+  boolean,
+  timestamp,
+  index,
+} from "drizzle-orm/pg-core";
 
 export const MUSCLE_GROUPS = [
   "Chest",
@@ -44,6 +51,26 @@ export type EquipmentOption = (typeof EQUIPMENT_OPTIONS)[number];
 export const EXERCISE_TYPES = ["STRENGTH", "CARDIO", "CONDITIONING", "HYROX"] as const;
 export type ExerciseType = (typeof EXERCISE_TYPES)[number];
 
+// Keep the stored format compatible with existing production text columns,
+// while exposing list values as string arrays to the API and application.
+const delimitedTextArray = customType<{
+  data: string[];
+  driverData: string;
+}>({
+  dataType() {
+    return "text";
+  },
+  toDriver(value) {
+    return value.join(", ");
+  },
+  fromDriver(value) {
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  },
+});
+
 export const exercisesTable = pgTable(
   "exercises",
   {
@@ -55,8 +82,8 @@ export const exercisesTable = pgTable(
     name: text("name").notNull(),
     description: text("description"),
     exerciseType: text("exercise_type").notNull().default("STRENGTH"),
-    primaryMuscleGroups: text("primary_muscle_groups").array(),
-    equipment: text("equipment").array(),
+    primaryMuscleGroups: delimitedTextArray("primary_muscle_groups"),
+    equipment: delimitedTextArray("equipment"),
     videoUrl: text("video_url"),
     instructions: text("instructions"),
     isArchived: boolean("is_archived").notNull().default(false),
