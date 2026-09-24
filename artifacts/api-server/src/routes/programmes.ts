@@ -302,7 +302,7 @@ router.get("/programmes/:id", async (req: Request, res: Response): Promise<void>
 
     const workoutsByDay = new Map<string, (typeof allWorkouts[number] & { blocks: ReturnType<typeof blocksByWorkout.get> })[]>();
     for (const wo of allWorkouts) {
-      const list = workoutsByDay.get(wo.dayId) ?? workoutsByDay.set(wo.dayId, []).get(wo.dayId)!;
+      const list = workoutsByDay.get(wo.dayId!) ?? workoutsByDay.set(wo.dayId!, []).get(wo.dayId!)!;
       list.push({ ...wo, blocks: blocksByWorkout.get(wo.id) ?? [] });
     }
 

@@ -55,6 +55,15 @@ vi.mock("@workspace/db", () => ({
     createdBy: "createdBy",
   },
   EXERCISE_TYPES: ["STRENGTH", "CARDIO", "CONDITIONING", "HYROX"],
+  MUSCLE_GROUPS: [
+    "Chest", "Back", "Shoulders", "Biceps", "Triceps",
+    "Quads", "Hamstrings", "Glutes", "Calves", "Core", "Full Body", "Other",
+  ],
+  EQUIPMENT_OPTIONS: [
+    "Barbell", "Dumbbell", "Kettlebell", "Cable", "Machine",
+    "Bench", "Rack", "SkiErg", "Bike", "Sled",
+    "Wall Ball", "Sandbag", "Bodyweight", "Other",
+  ],
 }));
 
 vi.mock("../lib/logger", () => ({
