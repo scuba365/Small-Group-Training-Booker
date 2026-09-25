@@ -762,12 +762,12 @@ function CreateSessionModal({
             <select
               value={form.sessionTypeId}
               onChange={(e) => handleTypeChange(e.target.value)}
-              disabled={sessionTypesLoading}
+              disabled={sessionTypesLoading || sessionTypesError}
               className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm disabled:opacity-60"
               data-testid="select-session-type"
             >
               {sessionTypesLoading && <option value="">Loading…</option>}
-              {sessionTypesError && <option value="">⚠ Could not load — run push-force then seed on Replit</option>}
+              {sessionTypesError && <option value="">⚠ Could not load session types</option>}
               {!sessionTypesLoading && !sessionTypesError && (
                 <>
                   <option value="">— None —</option>
@@ -777,6 +777,11 @@ function CreateSessionModal({
                 </>
               )}
             </select>
+            {!sessionTypesLoading && !sessionTypesError && sessionTypes.length === 0 && (
+              <p className="mt-1.5 text-[11px] text-amber-600 font-medium">
+                No session types found. Run the seed script on Replit to add SGPT, Hyrox etc.
+              </p>
+            )}
           </label>
 
           {/* Name */}
