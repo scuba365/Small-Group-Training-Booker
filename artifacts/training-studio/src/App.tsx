@@ -33,12 +33,10 @@ import {
   useCompleteWorkout,
   useGetDashboard,
   useGetWorkout,
-  useListMembers,
   useListWorkouts,
 } from '@workspace/api-client-react';
 import type {
   Dashboard,
-  Member,
   ProgressMetric,
   Workout,
   WorkoutLog,
@@ -57,6 +55,8 @@ import WorkoutSession from '@/pages/workout-session';
 import CoachMonitoring from '@/pages/coach-monitoring';
 import CoachWorkoutDetail from '@/pages/coach-workout-detail';
 import SchedulePage from '@/pages/schedule';
+import MembersPage from '@/pages/members';
+import MemberProfilePage from '@/pages/member-profile';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -251,11 +251,11 @@ function AppShell({ children }: { children: ReactNode }) {
 
   const isCoach = user?.role === 'COACH' || user?.role === 'OWNER';
   const links = isCoach ? [
-    { href: '/', label: 'Overview', icon: Home },
+    { href: '/', label: 'Dashboard', icon: Home },
     { href: '/schedule', label: 'Schedule', icon: CalendarDays },
+    { href: '/members', label: 'Members', icon: Users },
+    { href: '/programmes', label: 'Programming', icon: BarChart3 },
     { href: '/exercises', label: 'Exercises', icon: Dumbbell },
-    { href: '/programmes', label: 'Programmes', icon: BarChart3 },
-    { href: '/members', label: 'Roster', icon: Users },
     { href: '/coach/monitoring', label: 'Monitoring', icon: TrendingUp },
   ] : [
     { href: '/', label: 'Overview', icon: Home },
@@ -420,11 +420,6 @@ function WorkoutDetailPage() {
   return <div className="mx-auto max-w-5xl"><Link href="/workouts" className="mb-7 inline-flex items-center gap-2 text-xs font-bold text-muted-foreground hover:text-foreground" data-testid="link-back-workouts">← All workouts</Link><div className="grid gap-6 lg:grid-cols-[.9fr_1.1fr]"><div><Badge tone={workout.completed ? 'teal' : 'warm'}>{workout.completed ? 'Completed' : workout.category}</Badge><h1 className="mt-4 text-4xl font-bold tracking-[-.06em] sm:text-5xl">{workout.title}</h1><p className="mt-3 max-w-md text-base leading-7 text-muted-foreground">{workout.subtitle}</p><div className="mt-7 flex flex-wrap gap-2"><span className="inline-flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-xs"><Timer size={14} />{workout.durationMinutes} minutes</span><span className="inline-flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-xs"><Gauge size={14} />{workout.difficulty}</span></div><div className="mt-8 studio-card bg-secondary p-5 text-secondary-foreground"><div className="flex items-center justify-between"><p className="studio-label text-secondary-foreground/50">Session progress</p><span className="studio-mono text-sm text-primary">{completedCount}/{exercises.length}</span></div><div className="mt-4 h-2 overflow-hidden rounded-full bg-secondary-foreground/10"><div className="h-full rounded-full bg-primary transition-all" style={{ width: `${exercises.length ? completedCount / exercises.length * 100 : 0}%` }} /></div><p className="mt-4 text-sm leading-6 text-secondary-foreground/70">{completedCount === exercises.length && exercises.length ? 'Everything is checked. Log how it felt.' : 'Move through each line with control. Check it when it is done.'}</p></div></div><div className="studio-card p-5 sm:p-7"><div className="mb-6 flex items-center justify-between"><div><p className="studio-label">The work</p><h2 className="mt-1 text-xl font-bold">Exercise sequence</h2></div><span className="studio-mono text-[10px] text-muted-foreground">{formatDay(workout.scheduledFor)}</span></div><div className="space-y-2">{exercises.map((exercise, index) => { const isDone = checked[exercise.id] ?? exercise.completed; return <button key={exercise.id} onClick={() => setChecked((current) => ({ ...current, [exercise.id]: !isDone }))} className={cx('flex w-full items-start gap-3 rounded-xl border p-3 text-left transition', isDone ? 'border-[hsl(162_39%_44%/0.35)] bg-[hsl(162_39%_44%/0.08)]' : 'border-border hover:border-primary/60')} data-testid={`button-exercise-${exercise.id}`}><span className={cx('mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold', isDone ? 'border-[hsl(162_39%_44%)] bg-[hsl(162_39%_44%)] text-background' : 'border-border text-muted-foreground')}>{isDone ? <Check size={13} /> : `0${index + 1}`}</span><span className="min-w-0 flex-1"><span className={cx('block text-sm font-bold', isDone && 'line-through opacity-60')}>{exercise.name}</span><span className="mt-1 block text-xs text-muted-foreground">{exercise.prescription}</span>{exercise.note && <span className="mt-2 block text-[11px] italic text-muted-foreground/80">{exercise.note}</span>}</span><CheckCircle2 size={16} className={cx('mt-1 shrink-0', isDone ? 'text-[hsl(162_39%_44%)]' : 'text-border')} /></button> })}</div><div className="mt-7 border-t border-border/70 pt-6"><p className="studio-label">Close the loop</p><div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="text-xs font-semibold">How did it feel?<select value={score} onChange={(event) => setScore(event.target.value)} className="mt-2 w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm" data-testid="select-workout-score">{Array.from({ length: 10 }, (_, index) => index + 1).map((value) => <option key={value} value={value}>{value} / 10 — {value <= 4 ? 'heavy day' : value <= 7 ? 'solid work' : 'felt strong'}</option>)}</select></label><label className="text-xs font-semibold">Total volume<input type="number" min="0" value={volume} onChange={(event) => setVolume(event.target.value)} className="mt-2 w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm" data-testid="input-workout-volume" /></label></div><label className="mt-3 block text-xs font-semibold">A note for future you<textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} placeholder="One thing worth remembering…" className="mt-2 w-full resize-none rounded-lg border border-input bg-background px-3 py-2.5 text-sm placeholder:text-muted-foreground/60" data-testid="input-workout-notes" /></label><button disabled={complete.isPending || !!saved} onClick={submit} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-55" data-testid="button-complete-workout">{saved ? <><CheckCircle2 size={17} /> Logged — nice work</> : complete.isPending ? 'Saving your result…' : <><Play size={16} /> Finish and log workout</>}</button>{complete.isError && <p className="mt-3 text-center text-xs text-destructive" data-testid="status-complete-error">We couldn't save that result. Try again.</p>}</div></div></div></div>;
 }
 
-function MembersPage() {
-  const query = useListMembers();
-  const members = query.data as Member[] | undefined;
-  return <div><PageIntro eyebrow="Coach view" title="Know the room." detail="A quick read on who is showing up, what they are chasing, and where a nudge might help." action={<div className="inline-flex items-center gap-2 rounded-xl bg-[hsl(162_39%_44%/0.12)] px-3 py-2 text-xs font-bold text-[hsl(162_39%_32%)]"><span className="h-2 w-2 rounded-full bg-[hsl(162_39%_44%)]" />Live roster</div>} />{query.isLoading ? <LoadingPage label="Gathering the roster" /> : query.isError ? <ErrorState onRetry={() => query.refetch()} /> : !members?.length ? <EmptyState title="No members yet" detail="When your first member joins the studio, they will show up here." /> : <><div className="mb-5 flex flex-wrap items-center gap-2"><Badge tone="teal">{members.length} active members</Badge><span className="text-xs text-muted-foreground">Attendance is a conversation starter, not a grade.</span></div><div className="studio-card overflow-hidden" data-testid="table-members"><div className="hidden grid-cols-[1.5fr_1fr_100px_100px_110px] gap-4 border-b border-border bg-muted/45 px-5 py-3 text-[10px] font-bold uppercase tracking-[.13em] text-muted-foreground md:grid"><span>Member</span><span>Goal</span><span>Streak</span><span>Attendance</span><span>Last active</span></div><div className="divide-y divide-border">{members.map((member, index) => <div key={member.id} className={cx('grid gap-3 px-5 py-4 transition hover:bg-muted/30 md:grid-cols-[1.5fr_1fr_100px_100px_110px] md:items-center', 'studio-rise', `studio-delay-${Math.min(index + 1, 4)}`)} data-testid={`row-member-${member.id}`}><div className="flex items-center gap-3"><Avatar initials={member.initials} color={member.avatarColor} /><div><p className="text-sm font-bold">{member.name}</p><p className="text-xs text-muted-foreground md:hidden">{member.goal}</p></div></div><p className="hidden text-sm text-muted-foreground md:block">{member.goal}</p><div className="flex items-center gap-1.5 text-sm"><Flame size={14} className="text-accent" /><span className="font-semibold">{member.streak}</span><span className="text-xs text-muted-foreground">wk</span></div><div><span className="text-sm font-bold">{member.attendance}%</span><div className="mt-1 h-1 w-20 rounded-full bg-muted"><div className="h-1 rounded-full bg-[hsl(162_39%_44%)]" style={{ width: `${member.attendance}%` }} /></div></div><p className="text-xs text-muted-foreground">{relativeDate(member.lastActive)}</p></div>)}</div></div></>}</div>;
-}
 
 function NotFoundPage() {
   return <div className="flex min-h-[60vh] flex-col items-center justify-center text-center"><span className="studio-mono text-xs text-muted-foreground">404 / off the map</span><h1 className="mt-4 text-4xl font-bold tracking-tight">That page missed the session.</h1><Link href="/" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold" data-testid="link-back-home">Back to overview <MoveRight size={16} /></Link></div>;
@@ -443,6 +438,7 @@ function RoutedApp() {
               <Route path="/schedule" component={() => <ProtectedRoute component={SchedulePage} />} />
               <Route path="/workouts" component={() => <ProtectedRoute component={WorkoutsPage} />} />
               <Route path="/workouts/:workoutId" component={() => <ProtectedRoute component={WorkoutDetailPage} />} />
+              <Route path="/members/:id" component={() => <ProtectedRoute component={MemberProfilePage} />} />
               <Route path="/members" component={() => <ProtectedRoute component={MembersPage} />} />
               <Route path="/exercises" component={() => <ProtectedRoute component={ExerciseLibrary} />} />
               <Route path="/programmes" component={() => <ProtectedRoute component={ProgrammeList} />} />

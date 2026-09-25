@@ -22,6 +22,8 @@ export const organisationMembersTable = pgTable(
       .references(() => usersTable.id, { onDelete: "cascade" }),
     role: text("role").notNull().default("MEMBER"),
     status: text("status").notNull().default("ACTIVE"),
+    membershipPlan: text("membership_plan"),
+    membershipStartDate: timestamp("membership_start_date"),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => [uniqueIndex("org_user_unique").on(table.organisationId, table.userId)],

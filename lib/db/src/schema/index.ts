@@ -6,3 +6,4 @@ export * from "./exercises";
 export * from "./programmes";
 export * from "./performance";
 export * from "./sessions";
+export * from "./coach-notes";
