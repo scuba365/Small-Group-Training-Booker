@@ -30,21 +30,16 @@ import {
 import {
   getGetDashboardQueryKey,
   getGetWorkoutQueryKey,
-  getListSessionsQueryKey,
-  useBookSession,
-  useCancelSessionBooking,
   useCompleteWorkout,
   useGetDashboard,
   useGetWorkout,
   useListMembers,
-  useListSessions,
   useListWorkouts,
 } from '@workspace/api-client-react';
 import type {
   Dashboard,
   Member,
   ProgressMetric,
-  TrainingSession,
   Workout,
   WorkoutLog,
 } from '@workspace/api-client-react';
@@ -61,6 +56,7 @@ import MyProgramme from '@/pages/my-programme';
 import WorkoutSession from '@/pages/workout-session';
 import CoachMonitoring from '@/pages/coach-monitoring';
 import CoachWorkoutDetail from '@/pages/coach-workout-detail';
+import SchedulePage from '@/pages/schedule';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -351,24 +347,6 @@ function SectionHeading({ label, action }: { label: string; action?: ReactNode }
   return <div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-bold uppercase tracking-[.1em] text-muted-foreground">{label}</h2>{action}</div>;
 }
 
-function SessionCard({ session, onToggle, busy }: { session: TrainingSession; onToggle: (session: TrainingSession) => void; busy?: boolean }) {
-  const spotsLeft = session.spotsTotal - session.spotsTaken;
-  return (
-    <article className="studio-card studio-card-hover relative overflow-hidden border-l-4 p-4" style={{ borderLeftColor: session.accent || 'hsl(var(--primary))' }} data-testid={`card-session-${session.id}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div><div className="flex flex-wrap items-center gap-2"><Badge tone="warm">{session.tag}</Badge><Badge>{session.level}</Badge></div><h3 className="mt-3 text-lg font-bold tracking-tight">{session.title}</h3><p className="mt-1 text-sm text-muted-foreground">{session.focus}</p></div>
-        <div className="studio-mono text-right text-[11px] leading-5 text-muted-foreground"><p className="font-medium text-foreground">{formatDay(session.startAt)}</p><p>{formatTime(session.startAt)} – {formatTime(session.endAt)}</p></div>
-      </div>
-      <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground"><span className="inline-flex items-center gap-1.5"><Users size={14} />{session.coachName}</span><span className="inline-flex items-center gap-1.5"><MapPin size={14} />{session.location}</span></div>
-      <div className="mt-5 flex items-center justify-between gap-3 border-t border-border/70 pt-4">
-        <div className="flex items-center gap-2"><div className="flex gap-1">{Array.from({ length: session.spotsTotal }).map((_, index) => <span key={index} className={cx('h-1.5 w-4 rounded-full', index < session.spotsTaken ? 'bg-foreground/25' : 'bg-primary')} />)}</div><span className="studio-mono text-[10px] text-muted-foreground">{spotsLeft > 0 ? `${spotsLeft} ${spotsLeft === 1 ? 'place' : 'places'} left` : 'Full'}</span></div>
-        <button disabled={busy || (!session.booked && spotsLeft <= 0)} onClick={() => onToggle(session)} className={cx('inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-45', session.booked ? 'border border-border bg-transparent text-muted-foreground hover:border-destructive/40 hover:text-destructive' : 'bg-primary text-primary-foreground hover:-translate-y-0.5')} data-testid={`button-${session.booked ? 'cancel' : 'book'}-${session.id}`}>
-          {busy ? 'Saving…' : session.booked ? <><Check size={14} /> Booked</> : <><Plus size={14} /> Book place</>}
-        </button>
-      </div>
-    </article>
-  );
-}
 
 function DashboardPage() {
   const query = useGetDashboard();
@@ -409,33 +387,6 @@ function ProgressLine({ metric }: { metric: ProgressMetric }) {
   return <div data-testid={`progress-${metric.label.toLowerCase().replaceAll(' ', '-')}`}><div className="mb-2 flex items-end justify-between"><div><p className="text-sm font-semibold">{metric.label}</p><p className="studio-mono mt-1 text-lg">{metric.value}<span className="ml-1 text-[10px] text-muted-foreground">{metric.unit}</span></p></div><span className={cx('inline-flex items-center gap-1 text-xs font-bold', metric.trend === 'down' ? 'text-accent' : metric.trend === 'up' ? 'text-[hsl(162_39%_37%)]' : 'text-muted-foreground')}><TrendIcon size={14} />{metric.change}</span></div><div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-foreground/75" style={{ width: metric.trend === 'flat' ? '58%' : metric.trend === 'down' ? '42%' : '76%' }} /></div></div>;
 }
 
-function SchedulePage() {
-  const [range, setRange] = useState<'week' | 'month'>('week');
-  const sessionsQuery = useListSessions({ range });
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const book = useBookSession();
-  const cancel = useCancelSessionBooking();
-  const sessions = sessionsQuery.data as TrainingSession[] | undefined;
-  const grouped = useMemo(() => {
-    if (!sessions) return [];
-    return sessions.reduce<Record<string, TrainingSession[]>>((acc, session) => { const key = formatDay(session.startAt); (acc[key] ||= []).push(session); return acc; }, {});
-  }, [sessions]);
-  const handleToggle = (session: TrainingSession) => {
-    setBusyId(session.id);
-    const mutation = session.booked ? cancel : book;
-    mutation.mutate({ sessionId: session.id }, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListSessionsQueryKey({ range }) });
-        queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
-        setBusyId(null);
-      },
-      onError: () => setBusyId(null),
-    });
-  };
-  return <div><PageIntro eyebrow="Your calendar" title="Make room for the work." detail="Small-group sessions, coached closely. Capacity is real, so claim your place when it feels right." action={<div className="flex rounded-xl border border-border bg-card p-1">{(['week', 'month'] as const).map((value) => <button key={value} onClick={() => setRange(value)} className={cx('rounded-lg px-3 py-2 text-xs font-bold capitalize transition', range === value ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground')} data-testid={`button-range-${value}`}>{value}</button>)}</div>} />
-    {sessionsQuery.isLoading ? <LoadingPage label="Finding sessions" /> : sessionsQuery.isError ? <ErrorState onRetry={() => sessionsQuery.refetch()} /> : !sessions?.length ? <EmptyState title="No sessions in this window" detail="Try another range. Your coach will add the next block soon." /> : <div className="space-y-8">{Object.entries(grouped).map(([day, daySessions], index) => <section key={day} className={cx('studio-rise', `studio-delay-${Math.min(index + 1, 4)}`)} data-testid={`section-day-${day}`}><div className="mb-3 flex items-center gap-3"><span className="studio-mono text-xs font-medium text-foreground">{day}</span><div className="h-px flex-1 bg-border" /><span className="studio-mono text-[10px] text-muted-foreground">{daySessions.length} {daySessions.length === 1 ? 'session' : 'sessions'}</span></div><div className="grid gap-3 lg:grid-cols-2">{daySessions.map((session) => <SessionCard key={session.id} session={session} onToggle={handleToggle} busy={busyId === session.id} />)}</div></section>)}</div>}
-  </div>;
-}
 
 function WorkoutCard({ workout }: { workout: Workout }) {
   const exerciseCount = workout.exercises?.length ?? 0;

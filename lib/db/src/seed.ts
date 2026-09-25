@@ -12,6 +12,7 @@ import {
   organisationsTable,
   usersTable,
   organisationMembersTable,
+  sessionTypesTable,
 } from "./schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
@@ -127,6 +128,38 @@ async function main() {
     }
   } else {
     console.log("· Organisation membership already exists, skipping");
+  }
+
+  // 4. Seed session types for The Barracks
+  const BARRACKS_SESSION_TYPES = [
+    { id: "st_barracks_sgpt_01",            name: "SGPT",               color: "#ef4444", defaultDurationMinutes: 45,  defaultCapacity: 6  },
+    { id: "st_barracks_atc_01",             name: "ATC",                color: "#3b82f6", defaultDurationMinutes: 60,  defaultCapacity: 12 },
+    { id: "st_barracks_hyrox_01",           name: "Hyrox",              color: "#a855f7", defaultDurationMinutes: 60,  defaultCapacity: 12 },
+    { id: "st_barracks_prime_strength_01",  name: "Prime Strength",     color: "#f59e0b", defaultDurationMinutes: 60,  defaultCapacity: 8  },
+    { id: "st_barracks_next_gen_01",        name: "Next Gen Strength",  color: "#10b981", defaultDurationMinutes: 60,  defaultCapacity: 8  },
+    { id: "st_barracks_run_club_01",        name: "Run Club",           color: "#06b6d4", defaultDurationMinutes: 60,  defaultCapacity: 20 },
+    { id: "st_barracks_other_01",           name: "Other",              color: "#6b7280", defaultDurationMinutes: 60,  defaultCapacity: 12 },
+  ];
+
+  let sessionTypesCreated = 0;
+  for (const st of BARRACKS_SESSION_TYPES) {
+    const existing = await db
+      .select()
+      .from(sessionTypesTable)
+      .where(eq(sessionTypesTable.id, st.id))
+      .limit(1);
+    if (existing.length === 0) {
+      await db.insert(sessionTypesTable).values({
+        ...st,
+        organisationId: BARRACKS_ORG_ID,
+      });
+      sessionTypesCreated++;
+    }
+  }
+  if (sessionTypesCreated > 0) {
+    console.log(`✓ Created ${sessionTypesCreated} session types`);
+  } else {
+    console.log("· Session types already exist, skipping");
   }
 
   console.log("\n=== Seed complete ===");

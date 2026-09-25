@@ -10,6 +10,7 @@ import meRouter from "./me";
 import workoutInstancesRouter from "./workout-instances";
 import coachMonitoringRouter from "./coach-monitoring";
 import workoutTemplatesRouter from "./workout-templates";
+import scheduleRouter from "./schedule";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(meRouter);
 router.use(workoutInstancesRouter);
 router.use(coachMonitoringRouter);
 router.use(workoutTemplatesRouter);
+router.use(scheduleRouter);
 
 export default router;
