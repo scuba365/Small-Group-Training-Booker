@@ -554,6 +554,17 @@ function SessionDetailDrawer({
                             </button>
                           </div>
                         )}
+                        {(booking.status === 'ATTENDED' || booking.status === 'NO_SHOW') && (
+                          <button
+                            onClick={() => attendanceMutation.mutate({ bookingId: booking.id, status: 'BOOKED' })}
+                            disabled={attendanceMutation.isPending}
+                            className="shrink-0 rounded-lg px-2 py-1 text-[11px] font-bold text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                            title="Revert to booked"
+                            data-testid={`button-revert-${booking.id}`}
+                          >
+                            ↩
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -614,6 +625,8 @@ for (let h = 5; h <= 22; h++) {
 
 interface CreateModalProps {
   sessionTypes: SessionType[];
+  sessionTypesLoading: boolean;
+  sessionTypesError: boolean;
   defaultDate: string;
   editSession: SessionDetail | null;
   onClose: () => void;
@@ -622,6 +635,8 @@ interface CreateModalProps {
 
 function CreateSessionModal({
   sessionTypes,
+  sessionTypesLoading,
+  sessionTypesError,
   defaultDate,
   editSession,
   onClose,
@@ -742,22 +757,27 @@ function CreateSessionModal({
 
         <form onSubmit={handleSubmit} className="space-y-4 px-6 py-5">
           {/* Session type */}
-          {sessionTypes.length > 0 && (
-            <label className="block text-xs font-semibold">
-              Session type
-              <select
-                value={form.sessionTypeId}
-                onChange={(e) => handleTypeChange(e.target.value)}
-                className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                data-testid="select-session-type"
-              >
-                <option value="">— None —</option>
-                {sessionTypes.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
-            </label>
-          )}
+          <label className="block text-xs font-semibold">
+            Session type
+            <select
+              value={form.sessionTypeId}
+              onChange={(e) => handleTypeChange(e.target.value)}
+              disabled={sessionTypesLoading}
+              className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm disabled:opacity-60"
+              data-testid="select-session-type"
+            >
+              {sessionTypesLoading && <option value="">Loading…</option>}
+              {sessionTypesError && <option value="">⚠ Could not load — run push-force then seed on Replit</option>}
+              {!sessionTypesLoading && !sessionTypesError && (
+                <>
+                  <option value="">— None —</option>
+                  {sessionTypes.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </>
+              )}
+            </select>
+          </label>
 
           {/* Name */}
           <label className="block text-xs font-semibold">
@@ -1330,6 +1350,8 @@ export default function SchedulePage() {
       {createOpen && (
         <CreateSessionModal
           sessionTypes={sessionTypesQuery.data ?? []}
+          sessionTypesLoading={sessionTypesQuery.isLoading}
+          sessionTypesError={sessionTypesQuery.isError}
           defaultDate={viewMode === 'day' ? selectedDay : weekStartStr}
           editSession={editSession}
           onClose={() => { setCreateOpen(false); setEditSession(null); }}

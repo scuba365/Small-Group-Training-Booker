@@ -875,8 +875,11 @@ router.patch(
         updatedAt: new Date(),
       };
 
-      // Auto-apply fee for NO_SHOW from org settings if not explicitly provided
-      if (parsed.data.status === "NO_SHOW" && booking.feeAmountCents === null) {
+      // Reverting to BOOKED clears any previously recorded fee
+      if (parsed.data.status === "BOOKED") {
+        updates.feeAmountCents = null;
+        updates.feeReason = null;
+      } else if (parsed.data.status === "NO_SHOW" && booking.feeAmountCents === null) {
         if (parsed.data.feeAmountCents !== undefined) {
           updates.feeAmountCents = parsed.data.feeAmountCents;
           updates.feeReason = "NO_SHOW";
