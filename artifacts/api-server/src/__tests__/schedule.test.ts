@@ -212,7 +212,8 @@ function makeApp() {
   const app = express();
   app.use(cookieParser());
   app.use(express.json());
-  app.use(requireAuth as Parameters<typeof app.use>[0]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  app.use(requireAuth as any);
   app.use(scheduleRouter);
   return app;
 }
