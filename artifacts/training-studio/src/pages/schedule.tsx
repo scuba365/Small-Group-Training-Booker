@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  Dumbbell,
   Edit2,
   Loader2,
   MapPin,
@@ -17,6 +18,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
+import { Link } from 'wouter';
 import { useAuth } from '@/context/auth-context';
 import { useMode } from '@/context/mode-context';
 
@@ -392,14 +394,24 @@ function SessionDetailDrawer({
               </div>
             )}
 
-            {/* Linked workout */}
+            {/* Linked workout — tappable link for coaches */}
             {session.workout && (
-              <div className="rounded-xl border border-border bg-muted/40 px-4 py-3">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                  Today's workout
-                </p>
-                <p className="mt-1 text-sm font-semibold">{session.workout.name}</p>
-              </div>
+              <Link
+                href={`/workouts/${session.workout.id}`}
+                className="flex items-center justify-between rounded-xl border border-border bg-muted/40 px-4 py-3 transition hover:border-primary/40 hover:bg-muted/60"
+                data-testid="link-open-workout"
+              >
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    Today's workout
+                  </p>
+                  <p className="mt-0.5 flex items-center gap-1.5 text-sm font-semibold">
+                    <Dumbbell size={13} className="shrink-0 text-muted-foreground" />
+                    {session.workout.name}
+                  </p>
+                </div>
+                <ChevronRight size={16} className="shrink-0 text-muted-foreground" />
+              </Link>
             )}
 
             {/* Notes */}
