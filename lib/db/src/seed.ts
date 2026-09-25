@@ -130,7 +130,35 @@ async function main() {
     console.log("· Organisation membership already exists, skipping");
   }
 
-  // 4. Seed session types for The Barracks
+  // 4. Resolve the actual org ID from the owner's email.
+  // The org may have been created by the seed (using BARRACKS_ORG_ID) or by
+  // a different path (e.g. Replit agent), so we always look it up via the
+  // owner's membership rather than assuming the hardcoded ID is correct.
+  const ownerUser = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.email, ownerEmail))
+    .limit(1);
+
+  if (!ownerUser[0]) {
+    console.error(`\n✗ Could not find user with email ${ownerEmail} — cannot seed session types.\n`);
+    process.exit(1);
+  }
+
+  const ownerMembership = await db
+    .select({ organisationId: organisationMembersTable.organisationId })
+    .from(organisationMembersTable)
+    .where(eq(organisationMembersTable.userId, ownerUser[0].id))
+    .limit(1);
+
+  if (!ownerMembership[0]) {
+    console.error(`\n✗ Could not find org membership for ${ownerEmail} — cannot seed session types.\n`);
+    process.exit(1);
+  }
+
+  const resolvedOrgId = ownerMembership[0].organisationId;
+
+  // 5. Seed session types into the resolved org
   const BARRACKS_SESSION_TYPES = [
     { id: "st_barracks_sgpt_01",            name: "SGPT",               color: "#ef4444", defaultDurationMinutes: 45,  defaultCapacity: 6  },
     { id: "st_barracks_atc_01",             name: "ATC",                color: "#3b82f6", defaultDurationMinutes: 60,  defaultCapacity: 12 },
@@ -151,7 +179,7 @@ async function main() {
     if (existing.length === 0) {
       await db.insert(sessionTypesTable).values({
         ...st,
-        organisationId: BARRACKS_ORG_ID,
+        organisationId: resolvedOrgId,
       });
       sessionTypesCreated++;
     }
@@ -163,7 +191,7 @@ async function main() {
   }
 
   console.log("\n=== Seed complete ===");
-  console.log(`\nOrganisation ID : ${BARRACKS_ORG_ID}`);
+  console.log(`\nOrganisation ID : ${resolvedOrgId}`);
   console.log(`Owner email     : ${ownerEmail}`);
   console.log("\nYou can now log in at /login with these credentials.");
 }
