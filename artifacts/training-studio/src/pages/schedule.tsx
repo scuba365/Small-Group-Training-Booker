@@ -129,6 +129,35 @@ function formatWeekLabel(start: Date): string {
   return `${start.toLocaleDateString('en-IE', { day: 'numeric', month: 'short' })} – ${end.toLocaleDateString('en-IE', { day: 'numeric', month: 'short' })}`;
 }
 
+// ─── Time grid constants ──────────────────────────────────────────────────────
+
+const PX_PER_HOUR = 56;
+const PX_PER_MIN = PX_PER_HOUR / 60;
+const GRID_START_HOUR = 5;
+const GRID_END_HOUR = 22;
+const GRID_HEIGHT = (GRID_END_HOUR - GRID_START_HOUR) * PX_PER_HOUR;
+const GRID_HOURS = Array.from(
+  { length: GRID_END_HOUR - GRID_START_HOUR + 1 },
+  (_, i) => GRID_START_HOUR + i,
+);
+
+function timeToPixels(time: string): number {
+  const [h, m] = time.split(':').map(Number);
+  return ((h - GRID_START_HOUR) * 60 + m) * PX_PER_MIN;
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function formatHourLabel(h: number): string {
+  if (h === 12) return '12pm';
+  return h > 12 ? `${h - 12}pm` : `${h}am`;
+}
+
 // ─── Status display ───────────────────────────────────────────────────────────
 
 const STATUS_LABELS: Record<string, string> = {
@@ -153,33 +182,55 @@ const cx = (...parts: Array<string | false | undefined | null>) => parts.filter(
 
 // ─── SessionCard (week grid) ──────────────────────────────────────────────────
 
-function SessionCard({ session, onClick }: { session: SessionSummary; onClick: () => void }) {
+function SessionCard({
+  session,
+  onClick,
+  compact = false,
+}: {
+  session: SessionSummary;
+  onClick: () => void;
+  compact?: boolean;
+}) {
   const color = session.sessionTypeColor ?? '#6366f1';
   const isFull = session.bookedCount >= session.capacity;
 
   return (
     <button
       onClick={onClick}
-      className="w-full text-left rounded-xl border border-border bg-card px-2.5 py-2 transition hover:shadow-sm hover:border-border/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-      style={{ borderLeftColor: color, borderLeftWidth: 3 }}
+      className="w-full h-full overflow-hidden text-left rounded-md border border-transparent px-1.5 py-1 transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+      style={{
+        borderLeftColor: color,
+        borderLeftWidth: 3,
+        backgroundColor: hexToRgba(color, 0.12),
+      }}
       data-testid={`card-session-${session.id}`}
     >
-      <p className="text-[11px] font-bold leading-tight truncate">{session.name}</p>
-      <p className="mt-0.5 text-[10px] text-muted-foreground">
-        {formatSessionTime(session.startTime)} · {session.durationMinutes}m
-      </p>
-      <div className="mt-1.5 flex items-center justify-between gap-1">
-        <span className={cx('flex items-center gap-0.5 text-[10px] font-semibold', isFull ? 'text-destructive' : 'text-muted-foreground')}>
-          <Users size={10} />
-          {session.bookedCount}/{session.capacity}
-        </span>
-        {session.myBookingStatus === 'BOOKED' && (
-          <span className="rounded-full bg-primary/15 px-1 py-0.5 text-[9px] font-bold text-foreground">✓</span>
-        )}
-        {session.myBookingStatus === 'ATTENDED' && (
-          <span className="rounded-full bg-[hsl(162_39%_44%/0.14)] px-1 py-0.5 text-[9px] font-bold text-[hsl(162_39%_32%)]">✓</span>
-        )}
-      </div>
+      {compact ? (
+        <p className="truncate text-[9px] font-bold leading-tight" style={{ color }}>
+          {session.name}
+        </p>
+      ) : (
+        <>
+          <p className="truncate text-[10px] font-bold leading-tight" style={{ color }}>
+            {session.name}
+          </p>
+          <p className="mt-0.5 text-[9px] leading-tight text-muted-foreground">
+            {formatSessionTime(session.startTime)} · {session.durationMinutes}m
+          </p>
+          <div className="mt-0.5 flex items-center gap-0.5">
+            <Users size={8} className={isFull ? 'text-destructive' : 'text-muted-foreground'} />
+            <span className={cx('text-[8px] font-semibold', isFull ? 'text-destructive' : 'text-muted-foreground')}>
+              {session.bookedCount}/{session.capacity}
+            </span>
+            {session.myBookingStatus === 'BOOKED' && (
+              <span className="ml-0.5 text-[8px] font-bold text-primary">✓</span>
+            )}
+            {session.myBookingStatus === 'ATTENDED' && (
+              <span className="ml-0.5 text-[8px] font-bold text-[hsl(162_39%_37%)]">✓</span>
+            )}
+          </div>
+        </>
+      )}
     </button>
   );
 }
@@ -1064,51 +1115,104 @@ export default function SchedulePage() {
       {/* Week view */}
       {!sessionsQuery.isLoading && !sessionsQuery.isError && viewMode === 'week' && (
         <div className="overflow-x-auto -mx-5 px-5 sm:-mx-8 sm:px-8 lg:-mx-10 lg:px-10">
-          <div className="grid min-w-[560px] grid-cols-7 gap-2 pb-4">
-            {weekDates.map((date) => {
-              const { day, date: dateNum, isToday } = formatDayHeader(date);
-              const daySessions = sessionsByDate.get(date) ?? [];
-              return (
-                <div key={date} className="min-h-[160px]" data-testid={`col-day-${date}`}>
+          <div className="min-w-[600px] pb-4">
+            {/* Day header row */}
+            <div className="flex pb-2">
+              <div className="w-12 shrink-0" />
+              <div className="grid flex-1 grid-cols-7 gap-px">
+                {weekDates.map((date) => {
+                  const { day, date: dateNum, isToday } = formatDayHeader(date);
+                  return (
+                    <div
+                      key={date}
+                      className={cx(
+                        'flex flex-col items-center rounded-xl py-2',
+                        isToday ? 'bg-primary/15' : 'bg-muted/40',
+                      )}
+                    >
+                      <span
+                        className={cx(
+                          'studio-mono text-[10px] uppercase tracking-wide',
+                          isToday ? 'font-bold text-primary' : 'text-muted-foreground',
+                        )}
+                      >
+                        {day}
+                      </span>
+                      <span
+                        className={cx(
+                          'mt-0.5 text-lg font-bold leading-none',
+                          isToday ? 'text-primary' : 'text-foreground',
+                        )}
+                      >
+                        {dateNum}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Time grid */}
+            <div className="flex">
+              {/* Hour labels */}
+              <div className="relative w-12 shrink-0" style={{ height: GRID_HEIGHT }}>
+                {GRID_HOURS.map((h) => (
                   <div
-                    className={cx(
-                      'mb-2 flex flex-col items-center rounded-xl py-2 transition',
-                      isToday ? 'bg-primary/15' : 'bg-muted/40',
-                    )}
+                    key={h}
+                    className="absolute right-2"
+                    style={{ top: (h - GRID_START_HOUR) * PX_PER_HOUR - 6 }}
                   >
-                    <span
-                      className={cx(
-                        'studio-mono text-[10px] uppercase tracking-wide',
-                        isToday ? 'font-bold text-primary' : 'text-muted-foreground',
-                      )}
-                    >
-                      {day}
-                    </span>
-                    <span
-                      className={cx(
-                        'mt-0.5 text-lg font-bold leading-none',
-                        isToday ? 'text-primary' : 'text-foreground',
-                      )}
-                    >
-                      {dateNum}
+                    <span className="studio-mono text-[9px] leading-none text-muted-foreground/50">
+                      {formatHourLabel(h)}
                     </span>
                   </div>
-                  <div className="space-y-1.5">
-                    {daySessions.length === 0 ? (
-                      <p className="py-2 text-center text-[10px] text-muted-foreground/40">—</p>
-                    ) : (
-                      daySessions.map((s) => (
-                        <SessionCard
-                          key={s.id}
-                          session={s}
-                          onClick={() => setSelectedSessionId(s.id)}
-                        />
-                      ))
-                    )}
-                  </div>
+                ))}
+              </div>
+
+              {/* Grid body: hour lines + day columns */}
+              <div
+                className="relative flex-1 border-l border-border/30"
+                style={{ height: GRID_HEIGHT }}
+              >
+                {/* Hour lines */}
+                {GRID_HOURS.map((h) => (
+                  <div
+                    key={h}
+                    className="pointer-events-none absolute left-0 right-0 border-t border-border/30"
+                    style={{ top: (h - GRID_START_HOUR) * PX_PER_HOUR }}
+                  />
+                ))}
+
+                {/* Day columns */}
+                <div className="absolute inset-0 grid grid-cols-7">
+                  {weekDates.map((date) => (
+                    <div
+                      key={date}
+                      className="relative border-r border-border/20"
+                      data-testid={`col-day-${date}`}
+                    >
+                      {(sessionsByDate.get(date) ?? []).map((s) => {
+                        const top = timeToPixels(s.startTime);
+                        const height = Math.max(s.durationMinutes * PX_PER_MIN, 28);
+                        return (
+                          <div
+                            key={s.id}
+                            className="absolute inset-x-0.5"
+                            style={{ top, height }}
+                          >
+                            <SessionCard
+                              session={s}
+                              onClick={() => setSelectedSessionId(s.id)}
+                              compact={height < 44}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
                 </div>
-              );
-            })}
+              </div>
+            </div>
           </div>
         </div>
       )}
