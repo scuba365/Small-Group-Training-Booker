@@ -22,6 +22,7 @@ import type {
 import type {
   Dashboard,
   ErrorResponse,
+  ExerciseImportResult,
   HealthStatus,
   ListSessionsParams,
   Member,
@@ -135,6 +136,81 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
 
 
+
+export const getImportExerciseLibraryUrl = () => {
+
+
+
+
+  return `/api/exercises/import-library`
+}
+
+/**
+ * Owner-only and repeat-safe; does not change custom exercises.
+ * @summary Import missing global exercises from Free Exercise DB
+ */
+export const importExerciseLibrary = async ( options?: Parameters<typeof customFetch>[1]): Promise<ExerciseImportResult> => {
+
+  return customFetch<ExerciseImportResult>(getImportExerciseLibraryUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getImportExerciseLibraryMutationKey = () => ['importExerciseLibrary'] as const;
+
+export const getImportExerciseLibraryMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importExerciseLibrary>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof importExerciseLibrary>>, TError,void, TContext> => {
+
+const mutationKey = getImportExerciseLibraryMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof importExerciseLibrary>>, void> = () => {
+
+
+          return  importExerciseLibrary(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ImportExerciseLibraryMutationResult = NonNullable<Awaited<ReturnType<typeof importExerciseLibrary>>>
+
+    export type ImportExerciseLibraryMutationError = ErrorType<ErrorResponse>
+
+
+    /**
+ * @summary Import missing global exercises from Free Exercise DB
+ */
+export const useImportExerciseLibrary = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importExerciseLibrary>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof importExerciseLibrary>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getImportExerciseLibraryMutationOptions(options));
+    }
 
 export const getGetDashboardUrl = () => {
 

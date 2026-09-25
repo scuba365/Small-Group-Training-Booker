@@ -149,6 +149,21 @@ export function isValidRecord(record: unknown): record is FreeExerciseRecord {
     typeof r.name === "string" && r.name.trim().length > 0;
 }
 
+export function mapExerciseRecord(record: FreeExerciseRecord) {
+  return {
+    name: record.name.trim(),
+    organisationId: null, // global — visible to all orgs
+    exerciseType: mapExerciseType(record.category),
+    primaryMuscleGroups: mapMuscles(record.primaryMuscles),
+    equipment: mapEquipment(record.equipment),
+    instructions: formatInstructions(record.instructions),
+    description: buildDescription(record),
+    source: FREE_EXERCISE_DB_SOURCE,
+    sourceId: record.id,
+    isArchived: false,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Main importer
 // ---------------------------------------------------------------------------
@@ -200,18 +215,7 @@ export async function importExercises(
       }
 
       if (!opts.dryRun) {
-        await db.insert(exercisesTable).values({
-          name: record.name.trim(),
-          organisationId: null, // global — visible to all orgs
-          exerciseType: mapExerciseType(record.category),
-          primaryMuscleGroups: mapMuscles(record.primaryMuscles),
-          equipment: mapEquipment(record.equipment),
-          instructions: formatInstructions(record.instructions),
-          description: buildDescription(record),
-          source: FREE_EXERCISE_DB_SOURCE,
-          sourceId: record.id,
-          isArchived: false,
-        });
+        await db.insert(exercisesTable).values(mapExerciseRecord(record));
       }
 
       counts.imported++;
@@ -219,6 +223,62 @@ export async function importExercises(
       counts.errors++;
       console.error(`  ✗ Error importing "${record.name}":`, err);
     }
+  }
+
+  return counts;
+}
+
+/**
+ * User-initiated import for the live app. No schema changes or existing-row
+ * updates: missing source IDs are inserted in batches; retries are safe.
+ */
+export async function importFreeExerciseLibrary() {
+  const response = await fetch(DATA_URL, { signal: AbortSignal.timeout(20_000) });
+  if (!response.ok) throw new Error(`Exercise source returned HTTP ${response.status}`);
+
+  const data: unknown = await response.json();
+  if (!Array.isArray(data) || data.length === 0) {
+    throw new Error("Exercise source returned no records");
+  }
+
+  const counts = {
+    found: data.length,
+    imported: 0,
+    alreadyPresent: 0,
+    skippedInvalid: 0,
+  };
+  const existingRows = await db
+    .select({ sourceId: exercisesTable.sourceId })
+    .from(exercisesTable)
+    .where(eq(exercisesTable.source, FREE_EXERCISE_DB_SOURCE));
+  const existing = new Set(existingRows.map((row) => row.sourceId));
+  const seen = new Set<string>();
+  const missing: ReturnType<typeof mapExerciseRecord>[] = [];
+
+  for (const raw of data) {
+    if (!isValidRecord(raw) || seen.has(raw.id)) {
+      counts.skippedInvalid++;
+      continue;
+    }
+    seen.add(raw.id);
+    if (existing.has(raw.id)) {
+      counts.alreadyPresent++;
+    } else {
+      missing.push(mapExerciseRecord(raw));
+    }
+  }
+
+  if (seen.size === 0) throw new Error("Exercise source returned no valid records");
+
+  for (let i = 0; i < missing.length; i += 100) {
+    const batch = missing.slice(i, i + 100);
+    const inserted = await db
+      .insert(exercisesTable)
+      .values(batch)
+      .onConflictDoNothing({ target: [exercisesTable.source, exercisesTable.sourceId] })
+      .returning({ id: exercisesTable.id });
+    counts.imported += inserted.length;
+    counts.alreadyPresent += batch.length - inserted.length;
   }
 
   return counts;

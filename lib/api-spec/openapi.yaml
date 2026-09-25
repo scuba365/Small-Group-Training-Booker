@@ -18,6 +18,8 @@ tags:
     description: Programmed workouts and completion logs
   - name: members
     description: Coach-facing member roster
+  - name: exercises
+    description: Exercise library operations
 paths:
   /healthz:
     get:
@@ -32,6 +34,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /exercises/import-library:
+    post:
+      operationId: importExerciseLibrary
+      tags: [exercises]
+      summary: Import missing global exercises from Free Exercise DB
+      description: Owner-only and repeat-safe; does not change custom exercises.
+      responses:
+        "200":
+          description: Import summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExerciseImportResult"
+        "403":
+          description: Owner access required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Exercise import failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /dashboard:
     get:
       operationId: getDashboard
@@ -203,6 +230,18 @@ paths:
                   $ref: "#/components/schemas/Member"
 components:
   schemas:
+    ExerciseImportResult:
+      type: object
+      required: [found, imported, alreadyPresent, skippedInvalid]
+      properties:
+        found:
+          type: integer
+        imported:
+          type: integer
+        alreadyPresent:
+          type: integer
+        skippedInvalid:
+          type: integer
     HealthStatus:
       type: object
       properties:

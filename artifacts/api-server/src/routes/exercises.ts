@@ -3,7 +3,9 @@ import { db } from "@workspace/db";
 import { exercisesTable, EXERCISE_TYPES, MUSCLE_GROUPS, EQUIPMENT_OPTIONS } from "@workspace/db";
 import { eq, and, or, ilike, isNull, asc } from "drizzle-orm";
 import { z } from "zod";
-import { requireCoach } from "../middleware/require-role";
+import { requireOwner, requireCoach } from "../middleware/require-role";
+import { importFreeExerciseLibrary } from "@workspace/db/seed-exercises";
+import { ImportExerciseLibraryResponse } from "@workspace/api-zod";
 import { logger } from "../lib/logger";
 import type { Request, Response } from "express";
 
@@ -63,6 +65,18 @@ router.get("/exercises", async (req: Request, res: Response): Promise<void> => {
   } catch (err) {
     logger.error({ err }, "List exercises error");
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// POST /exercises/import-library — explicitly requested by an owner; never on startup.
+router.post("/exercises/import-library", requireOwner, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const result = await importFreeExerciseLibrary();
+    req.log.info({ imported: result.imported, alreadyPresent: result.alreadyPresent }, "Exercise library import completed");
+    res.json(ImportExerciseLibraryResponse.parse(result));
+  } catch (err) {
+    req.log.error({ err }, "Exercise library import failed");
+    res.status(500).json({ error: "Could not import the exercise library. Please try again." });
   }
 });
 

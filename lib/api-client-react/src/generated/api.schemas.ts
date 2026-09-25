@@ -5,6 +5,13 @@
  * Small group personal training booking and workout tracking API
  * OpenAPI spec version: 0.1.0
  */
+export interface ExerciseImportResult {
+  found: number;
+  imported: number;
+  alreadyPresent: number;
+  skippedInvalid: number;
+}
+
 export interface HealthStatus {
   status: string;
 }

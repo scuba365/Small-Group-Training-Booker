@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Mock DB before importing the module under test.
@@ -46,6 +46,7 @@ import {
   buildDescription,
   isValidRecord,
   importExercises,
+  importFreeExerciseLibrary,
   FREE_EXERCISE_DB_SOURCE,
   type FreeExerciseRecord,
 } from "../seed-exercises.js";
@@ -368,5 +369,57 @@ describe("importExercises — inserted values mapping", () => {
     expect(v.instructions).toBe(
       "<ol><li>Set up the barbell.</li><li>Squat down.</li><li>Drive back up.</li></ol>"
     );
+  });
+});
+
+describe("importFreeExerciseLibrary — live import", () => {
+  beforeEach(resetMocks);
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("inserts only missing global records and reports existing and invalid entries", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [MINIMAL_RECORD, { ...MINIMAL_RECORD, id: "Deadlift", name: "Deadlift" }, null],
+    }));
+    mockSelectChain.where.mockResolvedValueOnce([{ sourceId: "Back_Squat" }]);
+    const insertResult = {
+      onConflictDoNothing: vi.fn().mockReturnThis(),
+      returning: vi.fn().mockResolvedValue([{ id: "new-uuid" }]),
+    };
+    mockInsertChain.values.mockReturnValueOnce(insertResult);
+
+    const result = await importFreeExerciseLibrary();
+
+    expect(result).toEqual({ found: 3, imported: 1, alreadyPresent: 1, skippedInvalid: 1 });
+    const [rows] = mockInsertChain.values.mock.calls[0];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      name: "Deadlift",
+      organisationId: null,
+      source: FREE_EXERCISE_DB_SOURCE,
+      sourceId: "Deadlift",
+    });
+    expect(insertResult.onConflictDoNothing).toHaveBeenCalledOnce();
+  });
+
+  it("can be retried without changing already imported records", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [MINIMAL_RECORD],
+    }));
+    mockSelectChain.where.mockResolvedValueOnce([{ sourceId: MINIMAL_RECORD.id }]);
+
+    const result = await importFreeExerciseLibrary();
+
+    expect(result.imported).toBe(0);
+    expect(result.alreadyPresent).toBe(1);
+    expect(mockDb.insert).not.toHaveBeenCalled();
+  });
+
+  it("does not write anything if the source fetch fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 503 }));
+
+    await expect(importFreeExerciseLibrary()).rejects.toThrow("HTTP 503");
+    expect(mockDb.insert).not.toHaveBeenCalled();
   });
 });

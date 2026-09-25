@@ -5,6 +5,7 @@ import {
   boolean,
   timestamp,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export const MUSCLE_GROUPS = [
@@ -97,6 +98,8 @@ export const exercisesTable = pgTable(
   (table) => [
     // Covers the primary list query: WHERE org_id = ? AND is_archived = false
     index("exercises_org_archived_idx").on(table.organisationId, table.isArchived),
+    // Nullable fields keep custom exercises unrestricted; seeded records have both.
+    uniqueIndex("exercises_source_source_id_unique").on(table.source, table.sourceId),
   ],
 );
 

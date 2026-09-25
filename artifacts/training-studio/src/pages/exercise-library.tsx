@@ -22,7 +22,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { MultiSelect } from "@/components/multi-select";
 import { TiptapEditor } from "@/components/tiptap-editor";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Dumbbell, Plus, Search, Pencil, Archive, ChevronLeft, ExternalLink } from "lucide-react";
+import { importExerciseLibrary } from "@workspace/api-client-react";
+import { useAuth } from "@/context/auth-context";
+import { Dumbbell, Plus, Search, Pencil, Archive, ChevronLeft, ExternalLink, Download } from "lucide-react";
 
 const EXERCISE_TYPES = ["STRENGTH", "CARDIO", "CONDITIONING", "HYROX"] as const;
 type ExerciseType = (typeof EXERCISE_TYPES)[number];
@@ -102,6 +104,8 @@ const EMPTY_FORM: ExerciseFormData = {
 
 export default function ExerciseLibrary() {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const canImport = user?.role === "OWNER";
 
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("ALL");
@@ -109,6 +113,8 @@ export default function ExerciseLibrary() {
   const [editingExercise, setEditingExercise] = useState<Exercise | null>(null);
   const [form, setForm] = useState<ExerciseFormData>(EMPTY_FORM);
   const [error, setError] = useState<string | null>(null);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const params = new URLSearchParams();
   if (search) params.set("search", search);
@@ -160,6 +166,23 @@ export default function ExerciseLibrary() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["exercises"] }),
   });
 
+  const importMutation = useMutation({
+    mutationFn: () => importExerciseLibrary({ credentials: "include" }),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ["exercises"] });
+      setImportError(null);
+      setImportMessage(
+        result.imported > 0
+          ? `Imported ${result.imported} global exercises. ${result.alreadyPresent} were already in your library.`
+          : `No new exercises to import. ${result.alreadyPresent} are already in your library.`,
+      );
+    },
+    onError: () => {
+      setImportMessage(null);
+      setImportError("Could not import the exercise library. Please try again.");
+    },
+  });
+
   function openCreate() {
     setEditingExercise(null);
     setForm(EMPTY_FORM);
@@ -205,7 +228,7 @@ export default function ExerciseLibrary() {
   return (
     <div className="min-h-screen bg-background text-foreground p-6">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex flex-wrap items-center gap-3 mb-6">
         <Link href="/">
           <Button variant="ghost" size="icon"><ChevronLeft className="w-5 h-5" /></Button>
         </Link>
@@ -213,10 +236,35 @@ export default function ExerciseLibrary() {
           <Dumbbell className="w-6 h-6 text-primary" />
           <h1 className="text-2xl font-bold">Exercise Library</h1>
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {canImport && (
+            <Button
+              variant="outline"
+              disabled={importMutation.isPending}
+              onClick={() => {
+                setImportMessage(null);
+                setImportError(null);
+                importMutation.mutate();
+              }}
+            >
+              <Download className="w-4 h-4 mr-2" />
+              {importMutation.isPending ? "Importing..." : "Import global library"}
+            </Button>
+          )}
           <Button onClick={openCreate}><Plus className="w-4 h-4 mr-2" />Add Exercise</Button>
         </div>
       </div>
+
+      {importMessage && (
+        <p role="status" className="mb-4 rounded-md border border-primary/30 bg-primary/10 px-4 py-3 text-sm">
+          {importMessage}
+        </p>
+      )}
+      {importError && (
+        <p role="alert" className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {importError}
+        </p>
+      )}
 
       {/* Filters */}
       <div className="flex gap-3 mb-6">

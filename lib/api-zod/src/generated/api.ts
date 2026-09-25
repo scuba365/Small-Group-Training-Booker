@@ -18,6 +18,18 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * Owner-only and repeat-safe; does not change custom exercises.
+ * @summary Import missing global exercises from Free Exercise DB
+ */
+export const ImportExerciseLibraryResponse = zod.object({
+  "found": zod.number().int(),
+  "imported": zod.number().int(),
+  "alreadyPresent": zod.number().int(),
+  "skippedInvalid": zod.number().int()
+})
+
+
+/**
  * @summary Get the current training dashboard
  */
 export const GetDashboardResponse = zod.object({

@@ -9,6 +9,7 @@
 export * from './dashboard';
 export * from './errorResponse';
 export * from './exercise';
+export * from './exerciseImportResult';
 export * from './healthStatus';
 export * from './listSessionsParams';
 export * from './listSessionsRange';
