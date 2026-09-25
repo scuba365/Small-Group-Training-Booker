@@ -65,7 +65,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const data = await r.json();
     setUser(data.user);
     setOrg(data.organisation ?? null);
-    navigate("/");
+    // Role-based redirect: members go to their programme, coaches/owners to dashboard
+    navigate(data.user?.role === "MEMBER" ? "/my-programme" : "/");
   };
 
   const createOwner = async (

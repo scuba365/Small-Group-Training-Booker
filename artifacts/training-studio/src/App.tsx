@@ -14,6 +14,7 @@ import {
   Flame,
   Gauge,
   Home,
+  LogOut,
   MapPin,
   Menu,
   Minus,
@@ -72,6 +73,13 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   if (isLoading) return <LoadingPage />;
   if (!user) return <Redirect to="/login" />;
   return <Component />;
+}
+
+function LoginPage() {
+  const { user, isLoading } = useAuth();
+  if (isLoading) return <LoadingPage />;
+  if (user) return <Redirect to={user.role === "MEMBER" ? "/my-programme" : "/"} />;
+  return <Login />;
 }
 
 const cx = (...parts: Array<string | false | undefined>) => parts.filter(Boolean).join(' ');
@@ -295,10 +303,12 @@ function AppShell({ children }: { children: ReactNode }) {
             </div>
             <button
               onClick={() => logout()}
-              className="rounded-lg p-1 text-sidebar-foreground/50 hover:bg-sidebar-accent hover:text-sidebar-foreground text-xs"
+              className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-sidebar-foreground/50 hover:bg-sidebar-accent hover:text-sidebar-foreground transition"
               title="Sign out"
+              data-testid="button-signout"
             >
-              <X size={15} />
+              <LogOut size={14} />
+              <span className="hidden xl:inline">Sign out</span>
             </button>
           </div>
         </div>
@@ -306,6 +316,13 @@ function AppShell({ children }: { children: ReactNode }) {
 
       <header className="sticky top-0 z-20 flex h-[68px] items-center justify-between border-b border-border/70 bg-background/90 px-5 backdrop-blur lg:ml-[248px] lg:px-10">
         <div className="flex items-center gap-3 lg:hidden">
+          <button
+            onClick={() => setMobileNav(true)}
+            className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-muted transition"
+            aria-label="Open menu"
+          >
+            <Menu size={18} />
+          </button>
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary"><Dumbbell size={17} /></span>
           <span className="font-bold">Barracks OS</span>
         </div>
@@ -330,7 +347,39 @@ function AppShell({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      {mobileNav && <div className="fixed inset-0 z-40 bg-foreground/20 lg:hidden" onClick={() => setMobileNav(false)}><div className="w-72 bg-sidebar p-5 text-sidebar-foreground" onClick={(event) => event.stopPropagation()}><div className="mb-8 flex items-center justify-between"><span className="font-bold">Menu</span><button onClick={() => setMobileNav(false)} data-testid="button-close-menu"><X size={18} /></button></div>{links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} onClick={() => setMobileNav(false)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm" data-testid={`link-mobile-${label.toLowerCase()}`}><Icon size={17} />{label}</Link>)}</div></div>}
+      {mobileNav && (
+        <div className="fixed inset-0 z-40 bg-foreground/20 lg:hidden" onClick={() => setMobileNav(false)}>
+          <div className="w-72 bg-sidebar p-5 text-sidebar-foreground h-full flex flex-col" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-8 flex items-center justify-between">
+              <span className="font-bold">Menu</span>
+              <button onClick={() => setMobileNav(false)} data-testid="button-close-menu"><X size={18} /></button>
+            </div>
+            <div className="flex-1 space-y-1">
+              {links.map(({ href, label, icon: Icon }) => (
+                <Link key={href} href={href} onClick={() => setMobileNav(false)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm" data-testid={`link-mobile-${label.toLowerCase()}`}>
+                  <Icon size={17} />{label}
+                </Link>
+              ))}
+            </div>
+            <div className="border-t border-sidebar-border pt-4 mt-4">
+              <div className="flex items-center gap-3 px-3 py-2 mb-2">
+                <Avatar initials={initials} color="hsl(12 76% 65%)" size="sm" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">{user?.name ?? 'User'}</p>
+                  <p className="text-xs text-sidebar-foreground/50 truncate">{user?.email}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => { setMobileNav(false); logout(); }}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition"
+                data-testid="button-mobile-signout"
+              >
+                <LogOut size={17} /> Sign out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <main className="mx-auto max-w-[1440px] px-5 py-7 sm:px-8 lg:ml-[248px] lg:px-10 lg:py-10">{children}</main>
       <nav className="fixed inset-x-3 bottom-3 z-30 flex items-center justify-around rounded-2xl border border-border bg-card/95 p-2 shadow-xl backdrop-blur lg:hidden">
         {links.slice(0, 4).map(({ href, label, icon: Icon }) => <Link key={href} href={href} className={cx('flex min-w-16 flex-col items-center gap-1 rounded-xl px-2 py-2 text-[10px] font-semibold', active(href) ? 'bg-primary text-primary-foreground' : 'text-muted-foreground')} data-testid={`link-bottom-${label.toLowerCase()}`}><Icon size={17} />{label}</Link>)}
@@ -430,7 +479,7 @@ function RoutedApp() {
   return (
     <ErrorBoundary resetKey={location}>
       <Switch>
-        <Route path="/login" component={Login} />
+        <Route path="/login" component={LoginPage} />
         <Route>
           <AppShell>
             <Switch>

@@ -18,12 +18,14 @@ const { mockSessionRows, mockDbChain, mockDb } = vi.hoisted(() => {
     limit: vi.fn().mockImplementation(() => Promise.resolve([...mockSessionRows])),
     returning: vi.fn().mockImplementation(() => Promise.resolve([])),
     set: vi.fn().mockReturnThis(),
+    values: vi.fn().mockReturnThis(),
   };
 
   const mockDb = {
     select: vi.fn().mockReturnValue(mockDbChain),
     delete: vi.fn().mockReturnValue(mockDbChain),
     update: vi.fn().mockReturnValue(mockDbChain),
+    insert: vi.fn().mockReturnValue(mockDbChain),
   };
 
   return { mockSessionRows, mockDbChain, mockDb };
@@ -47,12 +49,24 @@ vi.mock("../lib/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+const { mockBcryptCompare } = vi.hoisted(() => ({
+  mockBcryptCompare: vi.fn().mockResolvedValue(true),
+}));
+
+vi.mock("bcryptjs", () => ({
+  default: {
+    compare: mockBcryptCompare,
+    hash: vi.fn().mockResolvedValue("$2b$12$mockhashedpassword"),
+  },
+}));
+
 // ---------------------------------------------------------------------------
 // Import middleware AFTER mocks are set up
 // ---------------------------------------------------------------------------
 
 import { requireAuth } from "../middleware/auth";
 import { requireCoach, requireRole } from "../middleware/require-role";
+import authRouter from "../routes/auth";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -256,5 +270,163 @@ describe("requireRole middleware", () => {
 
   it("grants COACH access to coach-only route", async () => {
     expect(await runMiddleware(requireCoach, "COACH")).toBe(200);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Auth route integration tests
+// ---------------------------------------------------------------------------
+
+const MOCK_USER_MEMBER = {
+  id: "tm1",
+  email: "cahillstephen@hotmail.com",
+  name: "Stephen Cahill",
+  passwordHash: "$2b$12$mockhashedpassword",
+};
+
+const MOCK_USER_OWNER = {
+  id: "u-owner-1",
+  email: "stephen@thebarracksfitness.com",
+  name: "Stephen Cahill",
+  passwordHash: "$2b$12$mockhashedpassword",
+};
+
+const MOCK_ORG_RECORD = {
+  id: "org-a",
+  name: "The Barracks Fitness",
+  slug: "the-barracks-fitness",
+  timezone: "Europe/Dublin",
+  currency: "EUR",
+};
+
+function makeAuthApp() {
+  const app = express();
+  app.use(cookieParser());
+  app.use(express.json());
+  app.use(authRouter);
+  return app;
+}
+
+function resetAuthMocks() {
+  vi.clearAllMocks();
+  mockSessionRows.length = 0;
+  mockDbChain.from.mockReturnThis();
+  mockDbChain.innerJoin.mockReturnThis();
+  mockDbChain.where.mockReturnThis();
+  mockDbChain.values.mockReturnThis();
+  mockDbChain.limit.mockImplementation(() => Promise.resolve([...mockSessionRows]));
+  mockDbChain.returning.mockImplementation(() => Promise.resolve([]));
+  mockDb.select.mockReturnValue(mockDbChain);
+  mockDb.insert.mockReturnValue(mockDbChain);
+  mockDb.delete.mockReturnValue(mockDbChain);
+  mockDb.update.mockReturnValue(mockDbChain);
+  mockBcryptCompare.mockResolvedValue(true);
+}
+
+describe("POST /auth/login", () => {
+  beforeEach(resetAuthMocks);
+
+  it("returns 200 with user.role MEMBER and sets a session cookie", async () => {
+    mockDbChain.limit
+      .mockResolvedValueOnce([MOCK_USER_MEMBER])
+      .mockResolvedValueOnce([{ member: { organisationId: "org-a", role: "MEMBER", status: "ACTIVE" }, org: MOCK_ORG_RECORD }]);
+
+    const res = await request(makeAuthApp())
+      .post("/auth/login")
+      .send({ email: "cahillstephen@hotmail.com", password: "TestMember2026!" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.user.role).toBe("MEMBER");
+    expect(res.body.user.email).toBe("cahillstephen@hotmail.com");
+    expect(res.body.organisation.id).toBe("org-a");
+    expect(res.headers["set-cookie"]).toBeDefined();
+  });
+
+  it("returns 200 with user.role OWNER and sets a session cookie", async () => {
+    mockDbChain.limit
+      .mockResolvedValueOnce([MOCK_USER_OWNER])
+      .mockResolvedValueOnce([{ member: { organisationId: "org-a", role: "OWNER", status: "ACTIVE" }, org: MOCK_ORG_RECORD }]);
+
+    const res = await request(makeAuthApp())
+      .post("/auth/login")
+      .send({ email: "stephen@thebarracksfitness.com", password: "BarracksOwner2026!" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.user.role).toBe("OWNER");
+    expect(res.headers["set-cookie"]).toBeDefined();
+  });
+
+  it("returns 401 when password is incorrect", async () => {
+    mockBcryptCompare.mockResolvedValueOnce(false);
+    mockDbChain.limit.mockResolvedValueOnce([MOCK_USER_MEMBER]);
+
+    const res = await request(makeAuthApp())
+      .post("/auth/login")
+      .send({ email: "cahillstephen@hotmail.com", password: "wrong-password" });
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toMatch(/invalid email or password/i);
+  });
+
+  it("returns 401 when user does not exist", async () => {
+    mockDbChain.limit.mockResolvedValueOnce([]);
+
+    const res = await request(makeAuthApp())
+      .post("/auth/login")
+      .send({ email: "nonexistent@test.com", password: "anything" });
+
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("GET /auth/me — session persistence", () => {
+  beforeEach(resetAuthMocks);
+
+  it("returns 200 with user and organisation on valid session (simulates page refresh)", async () => {
+    const SESSION = {
+      session: { token: "coach-token", expiresAt: new Date(Date.now() + 86_400_000), userId: "u1" },
+      user: { id: "u1", email: "coach@test.com", name: "Coach User" },
+      member: { organisationId: "org-a", role: "COACH", status: "ACTIVE" },
+    };
+    mockDbChain.limit
+      .mockResolvedValueOnce([SESSION])
+      .mockResolvedValueOnce([{ member: { organisationId: "org-a", role: "COACH", status: "ACTIVE" }, org: MOCK_ORG_RECORD }]);
+
+    const res = await request(makeAuthApp())
+      .get("/auth/me")
+      .set("Cookie", "__session=coach-token");
+
+    expect(res.status).toBe(200);
+    expect(res.body.user.email).toBe("coach@test.com");
+    expect(res.body.user.role).toBe("COACH");
+    expect(res.body.organisation.id).toBe("org-a");
+  });
+
+  it("returns 401 when no session cookie is present (expired or missing)", async () => {
+    const res = await request(makeAuthApp()).get("/auth/me");
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("POST /auth/logout", () => {
+  beforeEach(resetAuthMocks);
+
+  it("returns 204 and clears the session cookie", async () => {
+    mockDbChain.limit.mockResolvedValueOnce([COACH_SESSION]);
+
+    const res = await request(makeAuthApp())
+      .post("/auth/logout")
+      .set("Cookie", "__session=valid-coach-token");
+
+    expect(res.status).toBe(204);
+    const cookies = res.headers["set-cookie"] as string[] | string | undefined;
+    expect(cookies).toBeDefined();
+    const cookieArr = Array.isArray(cookies) ? cookies : [cookies as string];
+    expect(cookieArr.some((c) => c.startsWith("__session="))).toBe(true);
+  });
+
+  it("returns 401 when attempting to logout without a session cookie", async () => {
+    const res = await request(makeAuthApp()).post("/auth/logout");
+    expect(res.status).toBe(401);
   });
 });
