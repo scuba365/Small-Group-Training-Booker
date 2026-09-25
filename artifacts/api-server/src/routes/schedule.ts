@@ -92,7 +92,8 @@ const RecurringBody = CreateSessionBody.omit({ date: true }).extend({
     .min(1)
     .max(7),
   startDate: DateStr,
-  endDate: DateStr,
+  // Optional — if omitted the recurring schedule runs for 1 year from startDate
+  endDate: DateStr.optional(),
 });
 
 const SessionsQuery = z.object({
@@ -432,7 +433,16 @@ router.post(
       return;
     }
 
-    const { daysOfWeek, startDate, endDate, ...fields } = parsed.data;
+    const { daysOfWeek, startDate, endDate: rawEndDate, ...fields } = parsed.data;
+
+    // If no end date, default to 1 year from start
+    const endDate =
+      rawEndDate ??
+      (() => {
+        const d = new Date(startDate + "T00:00:00");
+        d.setFullYear(d.getFullYear() + 1);
+        return d.toISOString().slice(0, 10);
+      })();
 
     if (new Date(endDate) < new Date(startDate)) {
       res.status(400).json({ error: "endDate must be on or after startDate" });

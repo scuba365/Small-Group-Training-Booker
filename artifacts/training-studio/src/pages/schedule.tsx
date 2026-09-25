@@ -548,6 +548,15 @@ const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 // Display index → JS getDay() value (Mon=1 ... Sun=0)
 const DISPLAY_TO_JS_DAY = [1, 2, 3, 4, 5, 6, 0];
 
+// 15-minute interval time slots 05:00–22:00
+const TIME_SLOTS: string[] = [];
+for (let h = 5; h <= 22; h++) {
+  for (const m of [0, 15, 30, 45]) {
+    if (h === 22 && m > 0) break;
+    TIME_SLOTS.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+  }
+}
+
 interface CreateModalProps {
   sessionTypes: SessionType[];
   defaultDate: string;
@@ -577,6 +586,7 @@ function CreateSessionModal({
   });
   const [recurring, setRecurring] = useState(false);
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>([]);
+  const [openEndDate, setOpenEndDate] = useState(false);
   const [endDate, setEndDate] = useState(() => {
     const d = new Date(defaultDate + 'T12:00:00');
     d.setDate(d.getDate() + 27);
@@ -608,7 +618,12 @@ function CreateSessionModal({
         return apiFetch('/api/sessions/recurring', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...body, daysOfWeek, startDate: form.date, endDate }),
+          body: JSON.stringify({
+            ...body,
+            daysOfWeek,
+            startDate: form.date,
+            ...(openEndDate ? {} : { endDate }),
+          }),
         });
       }
 
@@ -753,18 +768,36 @@ function CreateSessionModal({
                   ))}
                 </div>
               </div>
-              <label className="block text-xs font-semibold">
-                End date *
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  min={form.date}
-                  required
-                  className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                  data-testid="input-end-date"
-                />
-              </label>
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <p className="text-xs font-semibold">End date</p>
+                  <label className="flex cursor-pointer select-none items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={openEndDate}
+                      onChange={(e) => setOpenEndDate(e.target.checked)}
+                      className="rounded"
+                      data-testid="toggle-open-end-date"
+                    />
+                    No end date
+                  </label>
+                </div>
+                {openEndDate ? (
+                  <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                    Runs for 1 year from start date
+                  </div>
+                ) : (
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    min={form.date}
+                    required={!openEndDate}
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    data-testid="input-end-date"
+                  />
+                )}
+              </div>
             </>
           )}
 
@@ -772,14 +805,17 @@ function CreateSessionModal({
           <div className="grid grid-cols-2 gap-3">
             <label className="block text-xs font-semibold">
               Start time *
-              <input
-                type="time"
-                value={form.startTime}
+              <select
+                value={TIME_SLOTS.includes(form.startTime) ? form.startTime : TIME_SLOTS[4]}
                 onChange={(e) => setForm((f) => ({ ...f, startTime: e.target.value }))}
                 required
                 className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                 data-testid="input-start-time"
-              />
+              >
+                {TIME_SLOTS.map((t) => (
+                  <option key={t} value={t}>{formatSessionTime(t)}</option>
+                ))}
+              </select>
             </label>
             <label className="block text-xs font-semibold">
               Duration (min) *
