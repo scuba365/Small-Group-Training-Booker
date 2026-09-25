@@ -6,12 +6,10 @@ import {
   GetDashboardResponse,
   GetWorkoutParams,
   GetWorkoutResponse,
-  ListMembersResponse,
   ListWorkoutsResponse,
 } from "@workspace/api-zod";
 import {
   getDashboard,
-  members,
   workoutLogs,
   workouts,
 } from "../lib/training-data";
@@ -76,10 +74,6 @@ router.post("/workouts/:workoutId/complete", (req, res): void => {
   };
   workoutLogs.unshift(log);
   res.status(201).json(CompleteWorkoutResponse.parse(log));
-});
-
-router.get("/members", (_req, res): void => {
-  res.json(ListMembersResponse.parse(members));
 });
 
 export default router;
