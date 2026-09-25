@@ -16,6 +16,7 @@
     "seed": "tsx src/seed.ts",
     "seed-exercises": "tsx src/seed-exercises.ts",
     "reset-password": "tsx src/reset-owner-password.ts",
+    "verify-sprint006": "tsx src/verify-sprint006.ts",
     "test": "vitest run"
   },
   "dependencies": {

@@ -85,7 +85,11 @@ async function apiFetch<T = void>(url: string, options?: RequestInit): Promise<T
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
 function toYMD(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  // Use local date components to avoid UTC offset shifting the date in BST/IST
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function getWeekStart(date: Date): Date {
