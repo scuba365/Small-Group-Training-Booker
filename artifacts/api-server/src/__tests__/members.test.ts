@@ -598,3 +598,85 @@ describe("Coach notes — POST /members/:id/notes", () => {
     expect(res.status).toBe(400);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sprint 007B — additional profile, attendance, and membership date tests
+// ---------------------------------------------------------------------------
+
+describe("Sprint 007B — Member profile coverage", () => {
+  beforeEach(resetMocks);
+
+  it("attendance aggregation: 2 ATTENDED + 1 NO_SHOW + 1 LATE_CANCEL + 3 CANCELLED → rate 50%, denominator 4", async () => {
+    mockDbChain.limit.mockResolvedValueOnce([COACH_SESSION]);
+    mockDbChain.limit.mockResolvedValueOnce([MOCK_MEMBER_ROW]);
+    mockDbChain.orderBy.mockResolvedValueOnce([
+      { ...MOCK_BOOKING_ATTENDED, sessionDate: "2026-08-01" },
+      { ...MOCK_BOOKING_ATTENDED, sessionDate: "2026-08-15" },
+      MOCK_BOOKING_NO_SHOW,
+      MOCK_BOOKING_LATE_CANCEL,
+      { ...MOCK_BOOKING_CANCELLED, sessionDate: "2026-07-01" },
+      { ...MOCK_BOOKING_CANCELLED, sessionDate: "2026-07-10" },
+      { ...MOCK_BOOKING_CANCELLED, sessionDate: "2026-07-20" },
+    ]);
+    mockDbChain.limit.mockResolvedValueOnce([]);   // no assignment
+    mockDbChain.orderBy.mockResolvedValueOnce([]); // no workouts
+    mockDbChain.orderBy.mockResolvedValueOnce([]); // no notes
+
+    const res = await request(makeApp())
+      .get("/members/m1")
+      .set("Cookie", "__session=coach-token");
+
+    expect(res.status).toBe(200);
+    expect(res.body.attendanceAttended).toBe(2);
+    expect(res.body.attendanceDenominator).toBe(4); // 2 + 1 + 1 (CANCELLED excluded)
+    expect(res.body.attendanceRate).toBe(50);
+  });
+
+  it("profile response includes bookings array and coachNotes with coachName field", async () => {
+    const noteWithCoach = { ...MOCK_NOTE, coachName: "Coach One" };
+
+    mockDbChain.limit.mockResolvedValueOnce([COACH_SESSION]);
+    mockDbChain.limit.mockResolvedValueOnce([MOCK_MEMBER_ROW]);
+    mockDbChain.orderBy.mockResolvedValueOnce([MOCK_BOOKING_ATTENDED]); // bookings
+    mockDbChain.limit.mockResolvedValueOnce([]);                         // no assignment
+    mockDbChain.orderBy.mockResolvedValueOnce([]);                        // no workouts
+    mockDbChain.orderBy.mockResolvedValueOnce([noteWithCoach]);           // notes with coach name
+
+    const res = await request(makeApp())
+      .get("/members/m1")
+      .set("Cookie", "__session=coach-token");
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.bookings)).toBe(true);
+    expect(res.body.bookings).toHaveLength(1);
+    expect(res.body.bookings[0].status).toBe("ATTENDED");
+    expect(res.body.coachNotes).toHaveLength(1);
+    expect(res.body.coachNotes[0].coachName).toBe("Coach One");
+  });
+
+  it("PATCH: membershipStartDate accepts ISO datetime string", async () => {
+    mockDbChain.limit.mockResolvedValueOnce([COACH_SESSION]);
+    mockDbChain.limit.mockResolvedValueOnce([{ userId: "m1" }]);
+
+    const res = await request(makeApp())
+      .patch("/members/m1")
+      .set("Cookie", "__session=coach-token")
+      .send({ membershipStartDate: "2026-01-15T00:00:00.000Z" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it("PATCH: membershipStartDate can be cleared to null", async () => {
+    mockDbChain.limit.mockResolvedValueOnce([COACH_SESSION]);
+    mockDbChain.limit.mockResolvedValueOnce([{ userId: "m1" }]);
+
+    const res = await request(makeApp())
+      .patch("/members/m1")
+      .set("Cookie", "__session=coach-token")
+      .send({ membershipStartDate: null });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+});
