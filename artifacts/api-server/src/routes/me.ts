@@ -7,8 +7,10 @@ import {
   weeksTable,
   daysTable,
   workoutsTable,
+  bookingsTable,
+  sessionsTable,
 } from "@workspace/db";
-import { eq, and, asc, inArray } from "drizzle-orm";
+import { eq, and, asc, desc, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import type { Request, Response } from "express";
 
@@ -197,6 +199,42 @@ router.get("/me/workout-template/:workoutId", async (req: Request, res: Response
     res.json(workout.workout);
   } catch (err) {
     logger.error({ err }, "Get member workout template error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /me/bookings — authenticated member's own booking history with session details
+router.get("/me/bookings", async (req: Request, res: Response): Promise<void> => {
+  const memberId = req.user!.id;
+  const orgId = req.organisationId!;
+
+  try {
+    const bookings = await db
+      .select({
+        id: bookingsTable.id,
+        status: bookingsTable.status,
+        bookedAt: bookingsTable.bookedAt,
+        cancelledAt: bookingsTable.cancelledAt,
+        feeAmountCents: bookingsTable.feeAmountCents,
+        feeReason: bookingsTable.feeReason,
+        sessionId: sessionsTable.id,
+        sessionName: sessionsTable.name,
+        sessionDate: sessionsTable.date,
+        sessionStartTime: sessionsTable.startTime,
+      })
+      .from(bookingsTable)
+      .innerJoin(sessionsTable, eq(bookingsTable.sessionId, sessionsTable.id))
+      .where(
+        and(
+          eq(bookingsTable.memberId, memberId),
+          eq(bookingsTable.organisationId, orgId),
+        ),
+      )
+      .orderBy(desc(sessionsTable.date));
+
+    res.json(bookings);
+  } catch (err) {
+    logger.error({ err }, "Get member bookings error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
